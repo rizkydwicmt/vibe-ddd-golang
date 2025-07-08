@@ -1,0 +1,31 @@
+server:
+  host: localhost
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  db_name: vibe_db
+  ssl_mode: disable
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+
+worker:
+  concurrency: 10
+  payment_check_interval: 5m
+  retry_max_attempts: 3
+  retry_delay: 30s
+
+logger:
+  level: info
+  format: json
+  output_path: stdout

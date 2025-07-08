@@ -72,7 +72,7 @@ func NewConfig() (*Config, error) {
 	viper.SetDefault("database.port", 5432)
 	viper.SetDefault("database.user", "postgres")
 	viper.SetDefault("database.password", "postgres")
-	viper.SetDefault("database.db_name", "omnix_db")
+	viper.SetDefault("database.db_name", "vibe_db")
 	viper.SetDefault("database.ssl_mode", "disable")
 
 	viper.SetDefault("logger.level", "info")

@@ -142,8 +142,8 @@ internal/application/{domain}/
 
 3. **Setup configuration**
    ```bash
-   cp config.yaml config.local.yaml
-   # Edit config.local.yaml with your settings
+   cp config.sample.yaml config.yaml
+   # Edit config.yaml with your settings
    ```
 
 4. **Start required services**
@@ -581,7 +581,7 @@ LOGGER_FORMAT=json
 
 ### Configuration File
 
-Edit `config.yaml` or create `config.local.yaml`:
+Edit `config.yaml` with your settings:
 
 ```yaml
 server:
