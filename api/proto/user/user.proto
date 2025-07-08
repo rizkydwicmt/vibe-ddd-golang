@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package user;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "vibe-ddd-golang/api/proto/user";
+
+// User service definition
+service UserService {
+  // Create a new user
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  
+  // Get a user by ID
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  
+  // List users with pagination
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  
+  // Update a user
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  
+  // Delete a user
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  
+  // Update user password
+  rpc UpdateUserPassword(UpdateUserPasswordRequest) returns (UpdateUserPasswordResponse);
+}
+
+// User message
+message User {
+  uint32 id = 1;
+  string name = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+// Create user request
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+// Create user response
+message CreateUserResponse {
+  User user = 1;
+}
+
+// Get user request
+message GetUserRequest {
+  uint32 id = 1;
+}
+
+// Get user response
+message GetUserResponse {
+  User user = 1;
+}
+
+// List users request
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+// List users response
+message ListUsersResponse {
+  repeated User users = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// Update user request
+message UpdateUserRequest {
+  uint32 id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+// Update user response
+message UpdateUserResponse {
+  User user = 1;
+}
+
+// Delete user request
+message DeleteUserRequest {
+  uint32 id = 1;
+}
+
+// Delete user response
+message DeleteUserResponse {
+  bool success = 1;
+}
+
+// Update user password request
+message UpdateUserPasswordRequest {
+  uint32 id = 1;
+  string old_password = 2;
+  string new_password = 3;
+}
+
+// Update user password response
+message UpdateUserPasswordResponse {
+  bool success = 1;
+}

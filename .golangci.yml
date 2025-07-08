@@ -1,0 +1,135 @@
+run:
+  timeout: 5m
+  tests: false  # Skip test files to avoid mock issues
+  modules-download-mode: readonly
+  build-tags:
+    - integration
+  skip-dirs:
+    - vendor
+    - api/proto
+    - internal/pkg/testutil
+
+linters-settings:
+  dupl:
+    threshold: 100
+  funlen:
+    lines: 80
+    statements: 50
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - dupImport
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+  gocyclo:
+    min-complexity: 15
+  goimports:
+    local-prefixes: vibe-ddd-golang
+  lll:
+    line-length: 120
+  misspell:
+    locale: US
+  nolintlint:
+    allow-unused: false
+    require-explanation: true
+    require-specific: true
+  revive:
+    rules:
+      - name: exported
+        disabled: true
+      - name: package-comments
+        disabled: true
+
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - misspell
+    - whitespace
+    - gocyclo
+    - funlen
+    - lll
+    - nilerr      # Finds code that returns nil even if it checks that error is not nil
+    - nilnil      # Checks that there is no simultaneous return of nil error and invalid value
+
+issues:
+  skip-dirs:
+    - vendor
+    - api/proto
+    - internal/pkg/testutil
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*_gen\\.go$"
+    - ".*_test\\.go$"
+    - ".*mock.*\\.go$"
+  exclude-rules:
+    # Exclude external dependencies and system Go packages
+    - path: ".*/go/pkg/mod/.*"
+      linters:
+        - all
+        
+    # Exclude Go toolchain files
+    - path: ".*toolchain.*"
+      linters:
+        - all
+        
+    # Exclude system packages
+    - path: ".*/golang\\.org/.*"
+      linters:
+        - all
+        
+    # Exclude vendor files
+    - path: vendor/
+      linters:
+        - all
+        
+    # Exclude test files
+    - path: _test\.go
+      linters:
+        - all
+    
+    # Exclude generated files
+    - path: \.pb\.go$
+      linters:
+        - all
+        
+    # Exclude testutil and mock files
+    - path: testutil/
+      linters:
+        - all
+        
+    - path: mock.*\.go$
+      linters:
+        - all
+        
+    # Allow long functions in main files
+    - path: main\.go
+      linters:
+        - funlen
+        
+    # Allow init functions in cmd packages
+    - path: cmd/
+      linters:
+        - gochecknoinits
+
+
+    # Allow longer lines in middleware for header lists
+    - path: internal/middleware/
+      linters:
+        - lll
+
+    # Allow longer lines in api setup for gRPC interceptors
+    - path: internal/api/grpc/
+      linters:
+        - lll
+
+  max-issues-per-linter: 50
+  max-same-issues: 3
