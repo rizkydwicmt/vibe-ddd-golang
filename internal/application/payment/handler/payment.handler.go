@@ -6,6 +6,10 @@ import (
 
 	"vibe-ddd-golang/internal/application/payment/dto"
 	"vibe-ddd-golang/internal/application/payment/service"
+	"vibe-ddd-golang/internal/common/enum"
+	types "vibe-ddd-golang/internal/common/type"
+	"vibe-ddd-golang/internal/pkg/reqbind"
+	"vibe-ddd-golang/internal/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -23,161 +27,169 @@ func NewPaymentHandler(service service.PaymentService, logger *zap.Logger) *Paym
 	}
 }
 
+func paramUint(c *gin.Context, key string) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param(key), 10, 32)
+	if err != nil {
+		response.Render(c, response.NewBadRequestException("invalid "+key))
+		return 0, false
+	}
+	return uint(id), true
+}
+
 // CreatePayment godoc
 // @Summary Create a new payment
-// @Description Create a new payment with the provided information
 // @Tags payments
 // @Accept json
 // @Produce json
 // @Param payment body dto.CreatePaymentRequest true "Payment creation request"
-// @Success 201 {object} map[string]interface{} "Created payment"
-// @Failure 400 {object} map[string]interface{} "Invalid request body"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 201 {object} types.ResponseAPI "Created payment"
+// @Failure 400 {object} types.ResponseAPI "Invalid request body"
 // @Router /payments [post]
-func (h *PaymentHandler) CreatePayment(ctx *gin.Context) {
+func (h *PaymentHandler) CreatePayment(c *gin.Context) {
 	var req dto.CreatePaymentRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		h.logger.Error("Invalid request body", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.Bind(c, &req); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid request body").WithCause(err))
+		return
+	}
+	if err := response.Validate(c, &req); err != nil {
 		return
 	}
 
-	payment, err := h.service.CreatePayment(&req)
+	payment, err := h.service.CreatePayment(c.Request.Context(), &req)
 	if err != nil {
-		h.logger.Error("Failed to create payment", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create payment"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, gin.H{"data": payment})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusCreated, Code: enum.CodeCreated, Message: "Payment created.", Data: payment})
 }
 
 // GetPayment godoc
 // @Summary Get a payment by ID
-// @Description Get a single payment by its ID
 // @Tags payments
-// @Accept json
 // @Produce json
 // @Param id path int true "Payment ID"
-// @Success 200 {object} map[string]interface{} "Payment details"
-// @Failure 400 {object} map[string]interface{} "Invalid payment ID"
-// @Failure 404 {object} map[string]interface{} "Payment not found"
+// @Success 200 {object} types.ResponseAPI "Payment details"
+// @Failure 404 {object} types.ResponseAPI "Payment not found"
 // @Router /payments/{id} [get]
-func (h *PaymentHandler) GetPayment(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+func (h *PaymentHandler) GetPayment(c *gin.Context) {
+	id, ok := paramUint(c, "id")
+	if !ok {
 		return
 	}
 
-	payment, err := h.service.GetPaymentByID(uint(id))
+	payment, err := h.service.GetPaymentByID(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("Failed to get payment", zap.Error(err))
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"data": payment})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "OK", Data: payment})
 }
 
 // GetPayments godoc
 // @Summary Get all payments
-// @Description Get a list of payments with optional filtering and pagination
 // @Tags payments
-// @Accept json
 // @Produce json
 // @Param status query string false "Filter by status" Enums(pending, completed, failed, canceled)
 // @Param currency query string false "Filter by currency (3-letter code)"
 // @Param user_id query int false "Filter by user ID"
 // @Param page query int false "Page number" default(1)
 // @Param page_size query int false "Number of items per page" default(10)
-// @Success 200 {object} dto.PaymentListResponse "List of payments"
-// @Failure 400 {object} map[string]interface{} "Invalid query parameters"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "List of payments"
 // @Router /payments [get]
-func (h *PaymentHandler) GetPayments(ctx *gin.Context) {
+func (h *PaymentHandler) GetPayments(c *gin.Context) {
 	var filter dto.PaymentFilter
-	if err := ctx.ShouldBindQuery(&filter); err != nil {
-		h.logger.Error("Invalid query parameters", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.BindQuery(c, &filter); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid query parameters").WithCause(err))
 		return
 	}
 
-	payments, err := h.service.GetPayments(&filter)
+	payments, err := h.service.GetPayments(c.Request.Context(), &filter)
 	if err != nil {
-		h.logger.Error("Failed to get payments", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get payments"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, payments)
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "OK", Data: payments})
 }
 
 // UpdatePayment godoc
 // @Summary Update a payment
-// @Description Update a payment's information by ID
 // @Tags payments
 // @Accept json
 // @Produce json
 // @Param id path int true "Payment ID"
 // @Param payment body dto.UpdatePaymentRequest true "Payment update request"
-// @Success 200 {object} map[string]interface{} "Updated payment"
-// @Failure 400 {object} map[string]interface{} "Invalid request"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "Updated payment"
+// @Failure 404 {object} types.ResponseAPI "Payment not found"
 // @Router /payments/{id} [put]
-func (h *PaymentHandler) UpdatePayment(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+func (h *PaymentHandler) UpdatePayment(c *gin.Context) {
+	id, ok := paramUint(c, "id")
+	if !ok {
 		return
 	}
 
 	var req dto.UpdatePaymentRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		h.logger.Error("Invalid request body", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.Bind(c, &req); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid request body").WithCause(err))
+		return
+	}
+	if err := response.Validate(c, &req); err != nil {
 		return
 	}
 
-	payment, err := h.service.UpdatePayment(uint(id), &req)
+	payment, err := h.service.UpdatePayment(c.Request.Context(), id, &req)
 	if err != nil {
-		h.logger.Error("Failed to update payment", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update payment"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"data": payment})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "Payment updated.", Data: payment})
 }
 
 // DeletePayment godoc
 // @Summary Delete a payment
-// @Description Delete a payment by ID
 // @Tags payments
-// @Accept json
 // @Produce json
 // @Param id path int true "Payment ID"
-// @Success 200 {object} map[string]interface{} "Payment deleted successfully"
-// @Failure 400 {object} map[string]interface{} "Invalid payment ID"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "Payment deleted"
+// @Failure 404 {object} types.ResponseAPI "Payment not found"
 // @Router /payments/{id} [delete]
-func (h *PaymentHandler) DeletePayment(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+func (h *PaymentHandler) DeletePayment(c *gin.Context) {
+	id, ok := paramUint(c, "id")
+	if !ok {
 		return
 	}
 
-	err = h.service.DeletePayment(uint(id))
-	if err != nil {
-		h.logger.Error("Failed to delete payment", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete payment"})
+	if err := h.service.DeletePayment(c.Request.Context(), id); err != nil {
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "Payment deleted successfully"})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "Payment deleted.", Data: nil})
+}
+
+// GetPaymentsByUser godoc
+// @Summary Get payments by user ID
+// @Tags payments
+// @Produce json
+// @Param id path int true "User ID"
+// @Success 200 {object} types.ResponseAPI "List of payments for the user"
+// @Router /users/{id}/payments [get]
+func (h *PaymentHandler) GetPaymentsByUser(c *gin.Context) {
+	userID, ok := paramUint(c, "id")
+	if !ok {
+		return
+	}
+
+	payments, err := h.service.GetPaymentsByUser(c.Request.Context(), userID)
+	if err != nil {
+		response.Render(c, err)
+		return
+	}
+
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "OK", Data: payments})
 }
 
 func (h *PaymentHandler) RegisterRoutes(api *gin.RouterGroup) {
@@ -194,33 +206,4 @@ func (h *PaymentHandler) RegisterRoutes(api *gin.RouterGroup) {
 	{
 		users.GET("/:id/payments", h.GetPaymentsByUser)
 	}
-}
-
-// GetPaymentsByUser godoc
-// @Summary Get payments by user ID
-// @Description Get all payments for a specific user
-// @Tags payments
-// @Accept json
-// @Produce json
-// @Param id path int true "User ID"
-// @Success 200 {object} map[string]interface{} "List of payments for the user"
-// @Failure 400 {object} map[string]interface{} "Invalid user ID"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
-// @Router /users/{id}/payments [get]
-func (h *PaymentHandler) GetPaymentsByUser(ctx *gin.Context) {
-	userIDStr := ctx.Param("id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	payments, err := h.service.GetPaymentsByUser(uint(userID))
-	if err != nil {
-		h.logger.Error("Failed to get payments by user", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get payments"})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": payments})
 }

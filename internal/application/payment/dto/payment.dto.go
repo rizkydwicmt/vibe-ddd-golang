@@ -5,14 +5,14 @@ import (
 )
 
 type CreatePaymentRequest struct {
-	Amount      float64 `json:"amount" binding:"required,gt=0"`
-	Currency    string  `json:"currency" binding:"required,len=3"`
-	Description string  `json:"description" binding:"required"`
-	UserID      uint    `json:"user_id" binding:"required"`
+	Amount      float64 `json:"amount" validate:"required,gt=0"`
+	Currency    string  `json:"currency" validate:"required,len=3"`
+	Description string  `json:"description" validate:"required"`
+	UserID      uint    `json:"user_id" validate:"required"`
 }
 
 type UpdatePaymentRequest struct {
-	Status      string `json:"status" binding:"required,oneof=pending completed failed canceled"`
+	Status      string `json:"status" validate:"required,oneof=pending completed failed canceled"`
 	Description string `json:"description"`
 }
 

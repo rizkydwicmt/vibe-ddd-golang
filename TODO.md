@@ -263,11 +263,6 @@ This document outlines planned improvements, features, and tasks for the Vibe DD
   - Implement local development environment
   - Reference: [Developer Experience Best Practices](https://dx.tips/)
 
-- [ ] **Add Architecture Decision Records (ADRs)**
-  - Document architectural decisions
-  - Implement ADR template
-  - Reference: [ADR Best Practices](https://github.com/joelparkerhenderson/architecture-decision-record)
-
 ### 🔵 Code Quality
 
 - [ ] **Implement Code Review Guidelines**
@@ -307,11 +302,6 @@ This document outlines planned improvements, features, and tasks for the Vibe DD
   - Add user analytics
   - Implement payment analytics
   - Add business intelligence features
-
-- [ ] **Multi-Tenancy Support**
-  - Add tenant isolation
-  - Implement tenant-specific configurations
-  - Add tenant management APIs
 
 ---
 

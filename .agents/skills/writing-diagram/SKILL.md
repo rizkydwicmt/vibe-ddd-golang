@@ -1,0 +1,1 @@
+../../../.claude/skills/writing-diagram/SKILL.md

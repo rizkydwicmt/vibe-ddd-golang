@@ -1,54 +1,55 @@
 package repository
 
 import (
+	"context"
+
 	"vibe-ddd-golang/internal/application/payment/dto"
 	"vibe-ddd-golang/internal/application/payment/entity"
+	"vibe-ddd-golang/internal/common/params"
+	database "vibe-ddd-golang/internal/pkg/db"
 
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
 type PaymentRepository interface {
-	Create(payment *entity.Payment) error
-	GetByID(id uint) (*entity.Payment, error)
-	GetAll(filter *dto.PaymentFilter) ([]entity.Payment, int64, error)
-	Update(payment *entity.Payment) error
-	Delete(id uint) error
-	GetByUserID(userID uint) ([]entity.Payment, error)
+	Create(ctx context.Context, payment *entity.Payment) error
+	GetByID(ctx context.Context, id uint) (*entity.Payment, error)
+	GetAll(ctx context.Context, filter *dto.PaymentFilter) ([]entity.Payment, int64, error)
+	Update(ctx context.Context, payment *entity.Payment) error
+	Delete(ctx context.Context, id uint) error
+	GetByUserID(ctx context.Context, userID uint) ([]entity.Payment, error)
 }
 
 type paymentRepository struct {
-	db     *gorm.DB
+	db     *database.Database
 	logger *zap.Logger
 }
 
-func NewPaymentRepository(db *gorm.DB, logger *zap.Logger) PaymentRepository {
+func NewPaymentRepository(p params.Params, logger *zap.Logger) PaymentRepository {
 	return &paymentRepository{
-		db:     db,
+		db:     p.MainDB,
 		logger: logger,
 	}
 }
 
-func (r *paymentRepository) Create(payment *entity.Payment) error {
+func (r *paymentRepository) Create(ctx context.Context, payment *entity.Payment) error {
 	r.logger.Info("Creating payment", zap.Uint("user_id", payment.UserID))
-	return r.db.Create(payment).Error
+	return r.db.WithContext(ctx).Create(payment).Error
 }
 
-func (r *paymentRepository) GetByID(id uint) (*entity.Payment, error) {
+func (r *paymentRepository) GetByID(ctx context.Context, id uint) (*entity.Payment, error) {
 	var payment entity.Payment
-	err := r.db.First(&payment, id).Error
-	if err != nil {
-		r.logger.Error("Failed to get payment by ID", zap.Uint("id", id), zap.Error(err))
+	if err := r.db.WithContext(ctx).First(&payment, id).Error; err != nil {
 		return nil, err
 	}
 	return &payment, nil
 }
 
-func (r *paymentRepository) GetAll(filter *dto.PaymentFilter) ([]entity.Payment, int64, error) {
+func (r *paymentRepository) GetAll(ctx context.Context, filter *dto.PaymentFilter) ([]entity.Payment, int64, error) {
 	var payments []entity.Payment
 	var totalCount int64
 
-	query := r.db.Model(&entity.Payment{})
+	query := r.db.WithContext(ctx).Model(&entity.Payment{})
 
 	if filter.Status != "" {
 		query = query.Where("status = ?", filter.Status)
@@ -60,15 +61,16 @@ func (r *paymentRepository) GetAll(filter *dto.PaymentFilter) ([]entity.Payment,
 		query = query.Where("user_id = ?", filter.UserID)
 	}
 
-	query.Count(&totalCount)
+	if err := query.Count(&totalCount).Error; err != nil {
+		return nil, 0, err
+	}
 
 	if filter.Page > 0 && filter.PageSize > 0 {
 		offset := (filter.Page - 1) * filter.PageSize
 		query = query.Offset(offset).Limit(filter.PageSize)
 	}
 
-	err := query.Find(&payments).Error
-	if err != nil {
+	if err := query.Find(&payments).Error; err != nil {
 		r.logger.Error("Failed to get payments", zap.Error(err))
 		return nil, 0, err
 	}
@@ -76,20 +78,19 @@ func (r *paymentRepository) GetAll(filter *dto.PaymentFilter) ([]entity.Payment,
 	return payments, totalCount, nil
 }
 
-func (r *paymentRepository) Update(payment *entity.Payment) error {
+func (r *paymentRepository) Update(ctx context.Context, payment *entity.Payment) error {
 	r.logger.Info("Updating payment", zap.Uint("id", payment.ID))
-	return r.db.Save(payment).Error
+	return r.db.WithContext(ctx).Save(payment).Error
 }
 
-func (r *paymentRepository) Delete(id uint) error {
+func (r *paymentRepository) Delete(ctx context.Context, id uint) error {
 	r.logger.Info("Deleting payment", zap.Uint("id", id))
-	return r.db.Delete(&entity.Payment{}, id).Error
+	return r.db.WithContext(ctx).Delete(&entity.Payment{}, id).Error
 }
 
-func (r *paymentRepository) GetByUserID(userID uint) ([]entity.Payment, error) {
+func (r *paymentRepository) GetByUserID(ctx context.Context, userID uint) ([]entity.Payment, error) {
 	var payments []entity.Payment
-	err := r.db.Where("user_id = ?", userID).Find(&payments).Error
-	if err != nil {
+	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Find(&payments).Error; err != nil {
 		r.logger.Error("Failed to get payments by user ID", zap.Uint("user_id", userID), zap.Error(err))
 		return nil, err
 	}

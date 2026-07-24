@@ -3,232 +3,170 @@ package handler
 import (
 	"context"
 
-	"vibe-ddd-golang/api/proto/payment"
 	"vibe-ddd-golang/internal/application/payment/dto"
 	"vibe-ddd-golang/internal/application/payment/entity"
 	"vibe-ddd-golang/internal/application/payment/service"
+	"vibe-ddd-golang/internal/pkg/grpcstatus"
+	"vibe-ddd-golang/internal/pkg/response"
+	"vibe-ddd-golang/internal/pkg/validation"
+	paymentv1 "vibe-ddd-golang/internal/server/grpc/proto/payment"
 
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type PaymentGrpcHandler struct {
-	payment.UnimplementedPaymentServiceServer
-	paymentService service.PaymentService
-	logger         *zap.Logger
+type PaymentGRPCServer struct {
+	paymentv1.UnimplementedPaymentServiceServer
+	service service.PaymentService
 }
 
-func NewPaymentGrpcHandler(paymentService service.PaymentService, logger *zap.Logger) *PaymentGrpcHandler {
-	return &PaymentGrpcHandler{
-		paymentService: paymentService,
-		logger:         logger,
-	}
+func NewPaymentGRPCServer(service service.PaymentService) *PaymentGRPCServer {
+	return &PaymentGRPCServer{service: service}
 }
 
-func (h *PaymentGrpcHandler) CreatePayment(
-	ctx context.Context,
-	req *payment.CreatePaymentRequest,
-) (*payment.CreatePaymentResponse, error) {
-	createReq := &dto.CreatePaymentRequest{
-		Amount:      req.Amount,
-		Currency:    req.Currency,
-		Description: req.Description,
-		UserID:      uint(req.UserId),
+func (s *PaymentGRPCServer) CreatePayment(
+	ctx context.Context, req *paymentv1.CreatePaymentRequest,
+) (*paymentv1.CreatePaymentResponse, error) {
+	in := &dto.CreatePaymentRequest{
+		Amount:      req.GetAmount(),
+		Currency:    req.GetCurrency(),
+		Description: req.GetDescription(),
+		UserID:      uint(req.GetUserId()),
+	}
+	if err := validatePaymentGRPC(in); err != nil {
+		return nil, err
 	}
 
-	paymentResponse, err := h.paymentService.CreatePayment(createReq)
+	payment, err := s.service.CreatePayment(ctx, in)
 	if err != nil {
-		h.logger.Error("Failed to create payment via gRPC", zap.Error(err))
-		return nil, status.Errorf(codes.Internal, "failed to create payment: %v", err)
+		return nil, grpcstatus.FromError(err)
+	}
+	return &paymentv1.CreatePaymentResponse{Payment: paymentToProto(payment)}, nil
+}
+
+func (s *PaymentGRPCServer) GetPayment(ctx context.Context, req *paymentv1.GetPaymentRequest) (*paymentv1.GetPaymentResponse, error) {
+	payment, err := s.service.GetPaymentByID(ctx, uint(req.GetId()))
+	if err != nil {
+		return nil, grpcstatus.FromError(err)
+	}
+	return &paymentv1.GetPaymentResponse{Payment: paymentToProto(payment)}, nil
+}
+
+func (s *PaymentGRPCServer) ListPayments(ctx context.Context, req *paymentv1.ListPaymentsRequest) (*paymentv1.ListPaymentsResponse, error) {
+	payments, err := s.service.GetPayments(ctx, &dto.PaymentFilter{
+		Status:   statusFromProto(req.GetStatus()),
+		Currency: req.GetCurrency(),
+		UserID:   uint(req.GetUserId()),
+		Page:     int(req.GetPage()),
+		PageSize: int(req.GetPageSize()),
+	})
+	if err != nil {
+		return nil, grpcstatus.FromError(err)
 	}
 
-	return &payment.CreatePaymentResponse{
-		Payment: h.toProtoPayment(paymentResponse),
+	out := make([]*paymentv1.Payment, 0, len(payments.Data))
+	for i := range payments.Data {
+		out = append(out, paymentToProto(&payments.Data[i]))
+	}
+
+	return &paymentv1.ListPaymentsResponse{
+		Payments: out,
+		Total:    payments.TotalCount,
+		Page:     int32(payments.Page),
+		PageSize: int32(payments.PageSize),
 	}, nil
 }
 
-func (h *PaymentGrpcHandler) GetPayment(
-	ctx context.Context,
-	req *payment.GetPaymentRequest,
-) (*payment.GetPaymentResponse, error) {
-	paymentResponse, err := h.paymentService.GetPaymentByID(uint(req.Id))
+func (s *PaymentGRPCServer) UpdatePayment(
+	ctx context.Context, req *paymentv1.UpdatePaymentRequest,
+) (*paymentv1.UpdatePaymentResponse, error) {
+	in := &dto.UpdatePaymentRequest{
+		Status:      statusFromProto(req.GetStatus()),
+		Description: req.GetDescription(),
+	}
+	if err := validatePaymentGRPC(in); err != nil {
+		return nil, err
+	}
+
+	payment, err := s.service.UpdatePayment(ctx, uint(req.GetId()), in)
 	if err != nil {
-		h.logger.Error("Failed to get payment via gRPC", zap.Uint32("id", req.Id), zap.Error(err))
-		return nil, status.Errorf(codes.NotFound, "payment not found: %v", err)
+		return nil, grpcstatus.FromError(err)
 	}
-
-	return &payment.GetPaymentResponse{
-		Payment: h.toProtoPayment(paymentResponse),
-	}, nil
+	return &paymentv1.UpdatePaymentResponse{Payment: paymentToProto(payment)}, nil
 }
 
-func (h *PaymentGrpcHandler) ListPayments(
-	ctx context.Context,
-	req *payment.ListPaymentsRequest,
-) (*payment.ListPaymentsResponse, error) {
-	page := int(req.Page)
-	pageSize := int(req.PageSize)
-
-	if page <= 0 {
-		page = 1
+func (s *PaymentGRPCServer) DeletePayment(
+	ctx context.Context, req *paymentv1.DeletePaymentRequest,
+) (*paymentv1.DeletePaymentResponse, error) {
+	if err := s.service.DeletePayment(ctx, uint(req.GetId())); err != nil {
+		return nil, grpcstatus.FromError(err)
 	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
+	return &paymentv1.DeletePaymentResponse{Success: true}, nil
+}
 
-	filter := &dto.PaymentFilter{
-		Page:     page,
-		PageSize: pageSize,
-	}
-
-	// Add status filter if provided
-	if req.Status != payment.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED {
-		filter.Status = h.protoStatusToString(req.Status)
-	}
-
-	// Add user filter if provided
-	if req.UserId > 0 {
-		filter.UserID = uint(req.UserId)
-	}
-
-	listResponse, err := h.paymentService.GetPayments(filter)
+func (s *PaymentGRPCServer) GetUserPayments(
+	ctx context.Context, req *paymentv1.GetUserPaymentsRequest,
+) (*paymentv1.GetUserPaymentsResponse, error) {
+	payments, err := s.service.GetPaymentsByUser(ctx, uint(req.GetUserId()))
 	if err != nil {
-		h.logger.Error("Failed to list payments via gRPC", zap.Error(err))
-		return nil, status.Errorf(codes.Internal, "failed to list payments: %v", err)
+		return nil, grpcstatus.FromError(err)
 	}
 
-	protoPayments := make([]*payment.Payment, len(listResponse.Data))
-	for i, p := range listResponse.Data {
-		protoPayments[i] = h.toProtoPayment(&p)
+	out := make([]*paymentv1.Payment, 0, len(payments))
+	for i := range payments {
+		out = append(out, paymentToProto(&payments[i]))
 	}
-
-	return &payment.ListPaymentsResponse{
-		Payments: protoPayments,
-		Total:    listResponse.TotalCount,
-		Page:     int32(listResponse.Page),
-		PageSize: int32(listResponse.PageSize),
-	}, nil
+	return &paymentv1.GetUserPaymentsResponse{Payments: out}, nil
 }
 
-func (h *PaymentGrpcHandler) UpdatePayment(
-	ctx context.Context,
-	req *payment.UpdatePaymentRequest,
-) (*payment.UpdatePaymentResponse, error) {
-	updateReq := &dto.UpdatePaymentRequest{
-		Description: req.Description,
+func validatePaymentGRPC(in any) error {
+	if err := validation.Validate(in); err != nil {
+		return grpcstatus.FromError(response.NewBadRequestException(err.Error()))
 	}
-
-	// Add status if provided
-	if req.Status != payment.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED {
-		updateReq.Status = h.protoStatusToString(req.Status)
-	}
-
-	paymentResponse, err := h.paymentService.UpdatePayment(uint(req.Id), updateReq)
-	if err != nil {
-		h.logger.Error("Failed to update payment via gRPC", zap.Uint32("id", req.Id), zap.Error(err))
-		return nil, status.Errorf(codes.Internal, "failed to update payment: %v", err)
-	}
-
-	return &payment.UpdatePaymentResponse{
-		Payment: h.toProtoPayment(paymentResponse),
-	}, nil
+	return nil
 }
 
-func (h *PaymentGrpcHandler) DeletePayment(
-	ctx context.Context,
-	req *payment.DeletePaymentRequest,
-) (*payment.DeletePaymentResponse, error) {
-	err := h.paymentService.DeletePayment(uint(req.Id))
-	if err != nil {
-		h.logger.Error("Failed to delete payment via gRPC", zap.Uint32("id", req.Id), zap.Error(err))
-		return nil, status.Errorf(codes.Internal, "failed to delete payment: %v", err)
+func paymentToProto(payment *dto.PaymentResponse) *paymentv1.Payment {
+	if payment == nil {
+		return nil
 	}
-
-	return &payment.DeletePaymentResponse{
-		Success: true,
-	}, nil
-}
-
-func (h *PaymentGrpcHandler) GetUserPayments(
-	ctx context.Context,
-	req *payment.GetUserPaymentsRequest,
-) (*payment.GetUserPaymentsResponse, error) {
-	page := int(req.Page)
-	pageSize := int(req.PageSize)
-
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-
-	filter := &dto.PaymentFilter{
-		Page:     page,
-		PageSize: pageSize,
-		UserID:   uint(req.UserId),
-	}
-
-	listResponse, err := h.paymentService.GetPayments(filter)
-	if err != nil {
-		h.logger.Error("Failed to get user payments via gRPC", zap.Uint32("user_id", req.UserId), zap.Error(err))
-		return nil, status.Errorf(codes.Internal, "failed to get user payments: %v", err)
-	}
-
-	protoPayments := make([]*payment.Payment, len(listResponse.Data))
-	for i, p := range listResponse.Data {
-		protoPayments[i] = h.toProtoPayment(&p)
-	}
-
-	return &payment.GetUserPaymentsResponse{
-		Payments: protoPayments,
-		Total:    listResponse.TotalCount,
-		Page:     int32(listResponse.Page),
-		PageSize: int32(listResponse.PageSize),
-	}, nil
-}
-
-func (h *PaymentGrpcHandler) toProtoPayment(p *dto.PaymentResponse) *payment.Payment {
-	return &payment.Payment{
-		Id:          uint32(p.ID),
-		Amount:      p.Amount,
-		Currency:    p.Currency,
-		Description: p.Description,
-		Status:      h.stringStatusToProto(p.Status),
-		UserId:      uint32(p.UserID),
-		CreatedAt:   timestamppb.New(p.CreatedAt),
-		UpdatedAt:   timestamppb.New(p.UpdatedAt),
+	return &paymentv1.Payment{
+		Id:          uint32(payment.ID),
+		Amount:      payment.Amount,
+		Currency:    payment.Currency,
+		Description: payment.Description,
+		Status:      statusToProto(payment.Status),
+		UserId:      uint32(payment.UserID),
+		CreatedAt:   timestamppb.New(payment.CreatedAt),
+		UpdatedAt:   timestamppb.New(payment.UpdatedAt),
 	}
 }
 
-func (h *PaymentGrpcHandler) stringStatusToProto(status string) payment.PaymentStatus {
+func statusFromProto(status paymentv1.PaymentStatus) string {
 	switch status {
-	case entity.PaymentStatusPending.String():
-		return payment.PaymentStatus_PAYMENT_STATUS_PENDING
-	case entity.PaymentStatusCompleted.String():
-		return payment.PaymentStatus_PAYMENT_STATUS_COMPLETED
-	case entity.PaymentStatusFailed.String():
-		return payment.PaymentStatus_PAYMENT_STATUS_FAILED
-	case entity.PaymentStatusCanceled.String():
-		return payment.PaymentStatus_PAYMENT_STATUS_CANCELED
-	default:
-		return payment.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED
-	}
-}
-
-func (h *PaymentGrpcHandler) protoStatusToString(status payment.PaymentStatus) string {
-	switch status {
-	case payment.PaymentStatus_PAYMENT_STATUS_PENDING:
+	case paymentv1.PaymentStatus_PAYMENT_STATUS_PENDING:
 		return entity.PaymentStatusPending.String()
-	case payment.PaymentStatus_PAYMENT_STATUS_COMPLETED:
+	case paymentv1.PaymentStatus_PAYMENT_STATUS_COMPLETED:
 		return entity.PaymentStatusCompleted.String()
-	case payment.PaymentStatus_PAYMENT_STATUS_FAILED:
+	case paymentv1.PaymentStatus_PAYMENT_STATUS_FAILED:
 		return entity.PaymentStatusFailed.String()
-	case payment.PaymentStatus_PAYMENT_STATUS_CANCELED:
+	case paymentv1.PaymentStatus_PAYMENT_STATUS_CANCELED:
 		return entity.PaymentStatusCanceled.String()
 	default:
-		return entity.PaymentStatusPending.String()
+		return ""
+	}
+}
+
+func statusToProto(status string) paymentv1.PaymentStatus {
+	switch entity.PaymentStatus(status) {
+	case entity.PaymentStatusPending:
+		return paymentv1.PaymentStatus_PAYMENT_STATUS_PENDING
+	case entity.PaymentStatusCompleted:
+		return paymentv1.PaymentStatus_PAYMENT_STATUS_COMPLETED
+	case entity.PaymentStatusFailed:
+		return paymentv1.PaymentStatus_PAYMENT_STATUS_FAILED
+	case entity.PaymentStatusCanceled:
+		return paymentv1.PaymentStatus_PAYMENT_STATUS_CANCELED
+	default:
+		return paymentv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED
 	}
 }
