@@ -60,6 +60,8 @@ internal/
 - ADRs live in [`docs/adr/`](docs/adr/); use them to record durable decisions and tradeoffs.
 - Diagrams live in [`docs/diagram/`](docs/diagram/); use them for architecture, workflow, and runtime views.
 - Keep architecture docs generic to the service template unless documenting an example domain.
+- Run `make agentic-check` before review; it catches documentation registration drift,
+  mismatched 4-digit ADR/diagram headings, and render-unsafe Mermaid placeholders.
 
 ### Feature spec workflow
 

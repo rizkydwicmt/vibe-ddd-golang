@@ -1,4 +1,4 @@
-# NN. <Diagram Title In Title Case>
+# NNNN. <Diagram Title In Title Case>
 
 - **ADR reference**: [NNNN. <ADR title>](../adr/NNNN-<slug>.md)
 - **Related diagram**: [NNNN. <related diagram title>](NNNN-<slug>.md)
@@ -14,18 +14,17 @@ High-level boxes and the edges between them. Show ownership boundaries (services
 
 ```mermaid
 flowchart LR
-  subgraph A["<Boundary A>"]
-    A1["<component>"]
-    A2["<store>"]
+  subgraph CallerBoundary["Caller Boundary"]
+    Caller["Caller"]
   end
 
-  subgraph B["<Boundary B>"]
-    B1["<component>"]
-    B2[("<database>")]
+  subgraph ServiceBoundary["Service Boundary"]
+    Service["API Service"]
+    Database[("Primary Database")]
   end
 
-  A1 --> B1
-  B1 <--> B2
+  Caller --> Service
+  Service <--> Database
 ```
 
 ## <Primary Flow / Provisioning / Setup>
@@ -35,13 +34,13 @@ The main happy-path sequence. Use `autonumber`. Keep participant names short and
 ```mermaid
 sequenceDiagram
   autonumber
-  participant X as <Actor>
-  participant Y as <Service>
-  participant Z as <Store>
+  participant Caller
+  participant Service
+  participant Store as Data Store
 
-  X->>Y: <request>
-  Y->>Z: <persist>
-  Y-->>X: <result>
+  Caller->>Service: Submit request
+  Service->>Store: Persist state
+  Service-->>Caller: Return result
 ```
 
 Rules:
@@ -55,11 +54,11 @@ The simplest path a normal caller follows. Mark exceptions as explicit escape ha
 
 ```mermaid
 flowchart TD
-  A["<entry>"] --> B["<step>"]
-  B --> C["<step>"]
-  C --> D["<exit>"]
+  A["Receive request"] --> B["Validate input"]
+  B --> C["Execute operation"]
+  C --> D["Return result"]
 
-  X["Escape hatch: <when allowed>"] -.-> B
+  X["Escape hatch: approved exception"] -.-> B
 ```
 
 KISS defaults:
@@ -72,17 +71,17 @@ KISS defaults:
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Client as <Client>
-  participant Svc as <Service>
-  participant DB as <DB>
-  participant Ext as <External provider>
+  participant Client
+  participant Service
+  participant Database
+  participant Provider as External Provider
 
-  Client->>Svc: <request>
-  Svc->>DB: <load/validate>
-  Svc->>Ext: <call when needed>
-  Ext-->>Svc: <result>
-  Svc->>DB: <persist final state>
-  Svc-->>Client: <response>
+  Client->>Service: Submit request
+  Service->>Database: Load and validate state
+  Service->>Provider: Call when required
+  Provider-->>Service: Return provider result
+  Service->>Database: Persist final state
+  Service-->>Client: Return response
 ```
 
 ## Verification / Decision Flowchart
@@ -91,11 +90,11 @@ Use a top-down flowchart for branching validation logic. Funnel every rejection 
 
 ```mermaid
 flowchart TD
-  A["<receive>"] --> B{"<check 1?>"}
-  B -- "No" --> X["<failure response>"]
-  B -- "Yes" --> C{"<check 2?>"}
+  A["Receive request"] --> B{"Input valid?"}
+  B -- "No" --> X["Return failure response"]
+  B -- "Yes" --> C{"Operation allowed?"}
   C -- "No" --> X
-  C -- "Yes" --> OK["<success path>"]
+  C -- "Yes" --> OK["Execute success path"]
 ```
 
 ## Data Model Extension
@@ -104,7 +103,7 @@ Only the entities this decision adds or changes. No cross-database foreign keys 
 
 ```mermaid
 erDiagram
-  PARENT ||--o{ CHILD : <relationship>
+  PARENT ||--o{ CHILD : owns
 
   PARENT {
     TEXT id PK
@@ -128,13 +127,13 @@ Notes:
 
 ```mermaid
 flowchart TD
-  A["Failure occurs"] --> B{"<before/after key boundary?>"}
-  B -- "<before>" --> C["<minimal/plaintext response>"]
-  B -- "<after>" --> D{"Failure class"}
-  D -- "Validation" --> E["<4xx envelope>"]
-  D -- "Provider rejected" --> F["<provider result envelope>"]
-  D -- "Transient" --> G["<retryable envelope>"]
-  D -- "Internal" --> H["<safe 5xx envelope>"]
+  A["Failure occurs"] --> B{"Before durable write?"}
+  B -- "Yes" --> C["Return minimal safe response"]
+  B -- "No" --> D{"Failure class"}
+  D -- "Validation" --> E["Return 4xx response envelope"]
+  D -- "Provider rejected" --> F["Return provider result envelope"]
+  D -- "Transient" --> G["Return retryable response envelope"]
+  D -- "Internal" --> H["Return safe 5xx response envelope"]
   C --> K["Log redacted reason only"]
   E --> K
   F --> K

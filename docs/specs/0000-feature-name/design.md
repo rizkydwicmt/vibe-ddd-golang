@@ -62,7 +62,7 @@ Delete this section only when the Visual Architecture Check records no trigger.
 
 ```mermaid
 flowchart LR
-  A["<meaningful component>"] --> B["<meaningful component>"]
+  Caller["Caller"] --> Service["API Service"]
 ```
 
 ## Repository Alignment

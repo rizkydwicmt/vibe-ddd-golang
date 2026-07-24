@@ -97,4 +97,43 @@ if find .claude/commands .claude/agents -type f -name '*.md' -print0 \
   failed=1
 fi
 
+check_numbered_headers() {
+  local directory=$1
+  local file base number expected header expected_prefix
+
+  while IFS= read -r file; do
+    base=$(basename "$file")
+    number=${base%%-*}
+    expected=$number
+    if [[ "$number" == "0000" ]]; then
+      expected=NNNN
+    fi
+
+    header=$(sed -n '1p' "$file")
+    expected_prefix="# ${expected}. "
+    if [[ $header != "$expected_prefix"* ]]; then
+      printf 'Numbered doc heading must match filename: %s (expected prefix: %s)\n' \
+        "$file" "$expected_prefix" >&2
+      failed=1
+    fi
+  done < <(find "$directory" -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-*.md' | sort)
+}
+
+check_numbered_headers docs/adr
+check_numbered_headers docs/diagram
+
+# ponytail: static checks cover template placeholders, not full Mermaid grammar; add
+# mermaid-cli when arbitrary hand-written diagrams become common enough to justify it.
+while IFS= read -r file; do
+  while IFS= read -r violation; do
+    [[ -z "$violation" ]] && continue
+    printf 'Render-unsafe placeholder inside Mermaid block: %s:%s\n' "$file" "$violation" >&2
+    failed=1
+  done < <(awk '
+    /^```mermaid[[:space:]]*$/ { in_mermaid = 1; next }
+    /^```[[:space:]]*$/ { in_mermaid = 0; next }
+    in_mermaid && /<[[:alnum:]][^>]*>/ { print FNR ":" $0 }
+  ' "$file")
+done < <(find docs -type f -name '*.md' | sort)
+
 exit "$failed"

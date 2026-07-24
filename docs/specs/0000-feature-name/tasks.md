@@ -41,8 +41,8 @@ Every acceptance criterion from `requirements.md` must appear exactly once with 
 
 ```mermaid
 flowchart LR
-  T1["T-001: <foundation>"] --> T2["T-002: <behavior>"]
-  T2 --> T3["T-003: <verification>"]
+  T1["T-001: Prepare foundation"] --> T2["T-002: Implement behavior"]
+  T2 --> T3["T-003: Verify acceptance criteria"]
 ```
 
 ## Tasks

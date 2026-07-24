@@ -21,7 +21,8 @@ independent: a diagram may exist without an ADR.
 1. Read the index table in `docs/diagram/README.md`; next free 4-digit `NNNN` is your number.
 2. Copy `docs/diagram/0000-diagram-template.md` to `docs/diagram/NNNN-kebab-case-title.md`.
 3. Fill the header: ADR reference (or `—` when none exists yet), related diagram, one-line
-   purpose, one-two sentences of scope (including what the diagram is *not* for).
+   purpose, one-two sentences of scope (including what the diagram is *not* for). Replace the
+   template's `NNNN` heading with the exact 4-digit filename prefix.
 4. **The template's sections are a menu, not a mandate.** Keep only the views that serve
    the one idea this diagram documents; delete the rest:
    - System Context — `flowchart LR` + subgraph boundaries
@@ -49,6 +50,8 @@ independent: a diagram may exist without an ADR.
 
 - Quote any label containing `(){}[]/:,` or other special chars: `A["parse (JSON)"]` —
   unquoted labels are the most common render failure.
+- Keep template examples renderable. Never put `<placeholder>` tokens inside a Mermaid fence;
+  use plain sample labels and replace them with concrete names.
 - Keep node labels short; put detail in prose under the diagram.
 - Keep participant names short and consistent across every sequence in one file.
 - Databases render as `B[("db")]`, escape hatches as dashed edges `-.->`.
@@ -57,6 +60,7 @@ independent: a diagram may exist without an ADR.
 
 - Mermaid source only — no binary images unless text source is genuinely impractical.
 - Filename `NNNN-kebab-case-title.md`, zero-padded 4 digits. Never renumber.
+- The first heading number exactly matches the filename prefix.
 - One primary idea per diagram. Unrelated flows split into separate files.
 - Generic service-template terms — no product or customer names (documenting an example
   domain like `user`/`payment` is the only exception).
@@ -73,6 +77,8 @@ independent: a diagram may exist without an ADR.
 |---|---|
 | One file with auth flow + schema + deploy topology | three diagrams, cross-linked |
 | `A[handle request (v2)]` | `A["handle request (v2)"]` |
+| `PARENT ||--o{ CHILD : <relationship>` | `PARENT ||--o{ CHILD : owns` |
+| `0001-request-flow.md` with `# NN.` | `0001-request-flow.md` with `# 0001.` |
 | Diagram added, index untouched | index row added in the same commit |
 | Keeping all 8 template sections half-filled | only the sections that serve the idea |
 | Each rejection branch its own dead-end node | all rejections funnel to one failure node |
