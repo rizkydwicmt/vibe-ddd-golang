@@ -1,0 +1,1 @@
+../../../.claude/skills/writing-spec/SKILL.md

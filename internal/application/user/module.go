@@ -14,13 +14,6 @@ var Module = fx.Options(
 		repository.NewUserRepository,
 		service.NewUserService,
 		handler.NewUserHandler,
-	),
-)
-
-// WorkerModule provides only worker dependencies for worker api
-var WorkerModule = fx.Options(
-	fx.Provide(
-		repository.NewUserRepository,
-		service.NewUserService,
+		handler.NewUserGRPCServer,
 	),
 )

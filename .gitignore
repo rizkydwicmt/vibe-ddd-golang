@@ -53,4 +53,7 @@ tmp/
 temp/
 
 # AI
-.claude/
+.claude/settings.local.json
+
+# Vendored reference repo (not part of template)
+astryx/

@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint (new code only)
+        # Full-repo lint carries pre-existing style debt (lll/gocyclo); gate new code
+        # only. Run `make lint` locally to see the full picture.
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          git fetch origin main
+          golangci-lint run --new-from-merge-base=origin/main
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race -cover ./...
+      - name: Build
+        run: make build-all
+
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: REPO-MAP index up to date
+        run: ./scripts/repo-map-check.sh
+      - name: Agentic docs registered
+        run: ./scripts/agentic-docs-check.sh
+      - name: Swagger docs up to date
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@v1.16.4
+          make swagger-gen
+          git diff --exit-code internal/server/api/docs \
+            || { echo "Swagger drift — run 'make swagger-gen' and commit."; exit 1; }
+
+  smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vibe_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Configure API
+        run: cp config.sample.yaml config.yaml
+      - name: Build API
+        run: make build
+      - name: Boot and probe
+        # The sample config targets postgres:postgres@localhost:5432/vibe_db with
+        # database.sync=true; Redis/RabbitMQ stay disabled.
+        run: |
+          ./bin/vibe-ddd-golang &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/healthz && break
+            sleep 1
+          done
+          curl -sf http://localhost:8080/readyz
+          body=$(curl -sf http://localhost:8080/api/v1/users)
+          echo "$body" | jq -e '.requestId and .code and (.debug != null)' \
+            || { echo "Envelope shape broken: $body"; exit 1; }

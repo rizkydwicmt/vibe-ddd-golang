@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"vibe-ddd-golang/internal/application/user/dto"
 	"vibe-ddd-golang/internal/application/user/entity"
 	"vibe-ddd-golang/internal/application/user/repository"
+	"vibe-ddd-golang/internal/pkg/response"
 
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -14,13 +16,13 @@ import (
 )
 
 type UserService interface {
-	CreateUser(req *dto.CreateUserRequest) (*dto.UserResponse, error)
-	GetUserByID(id uint) (*dto.UserResponse, error)
-	GetUserByEmail(email string) (*dto.UserResponse, error)
-	GetUsers(filter *dto.UserFilter) (*dto.UserListResponse, error)
-	UpdateUser(id uint, req *dto.UpdateUserRequest) (*dto.UserResponse, error)
-	UpdateUserPassword(id uint, req *dto.UpdateUserPasswordRequest) error
-	DeleteUser(id uint) error
+	CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserResponse, error)
+	GetUserByID(ctx context.Context, id uint) (*dto.UserResponse, error)
+	GetUserByEmail(ctx context.Context, email string) (*dto.UserResponse, error)
+	GetUsers(ctx context.Context, filter *dto.UserFilter) (*dto.UserListResponse, error)
+	UpdateUser(ctx context.Context, id uint, req *dto.UpdateUserRequest) (*dto.UserResponse, error)
+	UpdateUserPassword(ctx context.Context, id uint, req *dto.UpdateUserPasswordRequest) error
+	DeleteUser(ctx context.Context, id uint) error
 }
 
 type userService struct {
@@ -35,20 +37,18 @@ func NewUserService(repo repository.UserRepository, logger *zap.Logger) UserServ
 	}
 }
 
-func (s *userService) CreateUser(req *dto.CreateUserRequest) (*dto.UserResponse, error) {
-	exists, err := s.repo.EmailExists(req.Email)
+func (s *userService) CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserResponse, error) {
+	exists, err := s.repo.EmailExists(ctx, req.Email)
 	if err != nil {
-		s.logger.Error("Failed to check email existence", zap.Error(err))
-		return nil, err
+		return nil, response.NewInternalServerException("failed to check email").WithCause(err)
 	}
 	if exists {
-		return nil, errors.New("email already exists")
+		return nil, response.NewConflictException("email already exists")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		s.logger.Error("Failed to hash password", zap.Error(err))
-		return nil, err
+		return nil, response.NewInternalServerException("failed to hash password").WithCause(err)
 	}
 
 	user := &entity.User{
@@ -59,40 +59,38 @@ func (s *userService) CreateUser(req *dto.CreateUserRequest) (*dto.UserResponse,
 		UpdatedAt: time.Now(),
 	}
 
-	err = s.repo.Create(user)
-	if err != nil {
-		s.logger.Error("Failed to create user", zap.Error(err))
-		return nil, err
+	if err := s.repo.Create(ctx, user); err != nil {
+		return nil, response.NewInternalServerException("failed to create user").WithCause(err)
 	}
 
 	return s.entityToResponse(user), nil
 }
 
-func (s *userService) GetUserByID(id uint) (*dto.UserResponse, error) {
-	user, err := s.repo.GetByID(id)
+func (s *userService) GetUserByID(ctx context.Context, id uint) (*dto.UserResponse, error) {
+	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, response.NewNotFoundException("user not found")
 		}
-		return nil, err
+		return nil, response.NewInternalServerException("failed to get user").WithCause(err)
 	}
 
 	return s.entityToResponse(user), nil
 }
 
-func (s *userService) GetUserByEmail(email string) (*dto.UserResponse, error) {
-	user, err := s.repo.GetByEmail(email)
+func (s *userService) GetUserByEmail(ctx context.Context, email string) (*dto.UserResponse, error) {
+	user, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, response.NewNotFoundException("user not found")
 		}
-		return nil, err
+		return nil, response.NewInternalServerException("failed to get user").WithCause(err)
 	}
 
 	return s.entityToResponse(user), nil
 }
 
-func (s *userService) GetUsers(filter *dto.UserFilter) (*dto.UserListResponse, error) {
+func (s *userService) GetUsers(ctx context.Context, filter *dto.UserFilter) (*dto.UserListResponse, error) {
 	if filter.Page <= 0 {
 		filter.Page = 1
 	}
@@ -100,14 +98,14 @@ func (s *userService) GetUsers(filter *dto.UserFilter) (*dto.UserListResponse, e
 		filter.PageSize = 10
 	}
 
-	users, totalCount, err := s.repo.GetAll(filter)
+	users, totalCount, err := s.repo.GetAll(ctx, filter)
 	if err != nil {
-		return nil, err
+		return nil, response.NewInternalServerException("failed to list users").WithCause(err)
 	}
 
 	responses := make([]dto.UserResponse, 0, len(users))
-	for _, user := range users {
-		responses = append(responses, *s.entityToResponse(&user))
+	for i := range users {
+		responses = append(responses, *s.entityToResponse(&users[i]))
 	}
 
 	return &dto.UserListResponse{
@@ -118,23 +116,22 @@ func (s *userService) GetUsers(filter *dto.UserFilter) (*dto.UserListResponse, e
 	}, nil
 }
 
-func (s *userService) UpdateUser(id uint, req *dto.UpdateUserRequest) (*dto.UserResponse, error) {
-	user, err := s.repo.GetByID(id)
+func (s *userService) UpdateUser(ctx context.Context, id uint, req *dto.UpdateUserRequest) (*dto.UserResponse, error) {
+	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("user not found")
+			return nil, response.NewNotFoundException("user not found")
 		}
-		return nil, err
+		return nil, response.NewInternalServerException("failed to get user").WithCause(err)
 	}
 
 	if req.Email != user.Email {
-		exists, err := s.repo.EmailExists(req.Email)
+		exists, err := s.repo.EmailExists(ctx, req.Email)
 		if err != nil {
-			s.logger.Error("Failed to check email existence", zap.Error(err))
-			return nil, err
+			return nil, response.NewInternalServerException("failed to check email").WithCause(err)
 		}
 		if exists {
-			return nil, errors.New("email already exists")
+			return nil, response.NewConflictException("email already exists")
 		}
 	}
 
@@ -142,51 +139,52 @@ func (s *userService) UpdateUser(id uint, req *dto.UpdateUserRequest) (*dto.User
 	user.Email = req.Email
 	user.UpdatedAt = time.Now()
 
-	err = s.repo.Update(user)
-	if err != nil {
-		s.logger.Error("Failed to update user", zap.Error(err))
-		return nil, err
+	if err := s.repo.Update(ctx, user); err != nil {
+		return nil, response.NewInternalServerException("failed to update user").WithCause(err)
 	}
 
 	return s.entityToResponse(user), nil
 }
 
-func (s *userService) UpdateUserPassword(id uint, req *dto.UpdateUserPasswordRequest) error {
-	user, err := s.repo.GetByID(id)
+func (s *userService) UpdateUserPassword(ctx context.Context, id uint, req *dto.UpdateUserPasswordRequest) error {
+	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("user not found")
+			return response.NewNotFoundException("user not found")
 		}
-		return err
+		return response.NewInternalServerException("failed to get user").WithCause(err)
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword))
-	if err != nil {
-		return errors.New("current password is incorrect")
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword)); err != nil {
+		return response.NewUnauthorizedException("current password is incorrect")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		s.logger.Error("Failed to hash new password", zap.Error(err))
-		return err
+		return response.NewInternalServerException("failed to hash new password").WithCause(err)
 	}
 
 	user.Password = string(hashedPassword)
 	user.UpdatedAt = time.Now()
 
-	return s.repo.Update(user)
+	if err := s.repo.Update(ctx, user); err != nil {
+		return response.NewInternalServerException("failed to update password").WithCause(err)
+	}
+	return nil
 }
 
-func (s *userService) DeleteUser(id uint) error {
-	_, err := s.repo.GetByID(id)
-	if err != nil {
+func (s *userService) DeleteUser(ctx context.Context, id uint) error {
+	if _, err := s.repo.GetByID(ctx, id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("user not found")
+			return response.NewNotFoundException("user not found")
 		}
-		return err
+		return response.NewInternalServerException("failed to get user").WithCause(err)
 	}
 
-	return s.repo.Delete(id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return response.NewInternalServerException("failed to delete user").WithCause(err)
+	}
+	return nil
 }
 
 func (s *userService) entityToResponse(user *entity.User) *dto.UserResponse {

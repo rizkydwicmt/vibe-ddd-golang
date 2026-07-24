@@ -6,6 +6,10 @@ import (
 
 	"vibe-ddd-golang/internal/application/user/dto"
 	"vibe-ddd-golang/internal/application/user/service"
+	"vibe-ddd-golang/internal/common/enum"
+	types "vibe-ddd-golang/internal/common/type"
+	"vibe-ddd-golang/internal/pkg/reqbind"
+	"vibe-ddd-golang/internal/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -23,6 +27,15 @@ func NewUserHandler(service service.UserService, logger *zap.Logger) *UserHandle
 	}
 }
 
+func parseID(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		response.Render(c, response.NewBadRequestException("invalid id"))
+		return 0, false
+	}
+	return uint(id), true
+}
+
 // CreateUser godoc
 // @Summary Create a new user
 // @Description Create a new user with the provided information
@@ -30,220 +43,167 @@ func NewUserHandler(service service.UserService, logger *zap.Logger) *UserHandle
 // @Accept json
 // @Produce json
 // @Param user body dto.CreateUserRequest true "User creation request"
-// @Success 201 {object} map[string]interface{} "Created user"
-// @Failure 400 {object} map[string]interface{} "Invalid request body"
-// @Failure 409 {object} map[string]interface{} "Email already exists"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 201 {object} types.ResponseAPI "Created user"
+// @Failure 400 {object} types.ResponseAPI "Invalid request body"
+// @Failure 409 {object} types.ResponseAPI "Email already exists"
 // @Router /users [post]
-func (h *UserHandler) CreateUser(ctx *gin.Context) {
+func (h *UserHandler) CreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		h.logger.Error("Invalid request body", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.Bind(c, &req); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid request body").WithCause(err))
+		return
+	}
+	if err := response.Validate(c, &req); err != nil {
 		return
 	}
 
-	user, err := h.service.CreateUser(&req)
+	user, err := h.service.CreateUser(c.Request.Context(), &req)
 	if err != nil {
-		h.logger.Error("Failed to create user", zap.Error(err))
-		if err.Error() == "email already exists" {
-			ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, gin.H{"data": user})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusCreated, Code: enum.CodeCreated, Message: "User created.", Data: user})
 }
 
 // GetUser godoc
 // @Summary Get a user by ID
-// @Description Get a single user by their ID
 // @Tags users
-// @Accept json
 // @Produce json
 // @Param id path int true "User ID"
-// @Success 200 {object} map[string]interface{} "User details"
-// @Failure 400 {object} map[string]interface{} "Invalid user ID"
-// @Failure 404 {object} map[string]interface{} "User not found"
+// @Success 200 {object} types.ResponseAPI "User details"
+// @Failure 404 {object} types.ResponseAPI "User not found"
 // @Router /users/{id} [get]
-func (h *UserHandler) GetUser(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+func (h *UserHandler) GetUser(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
 		return
 	}
 
-	user, err := h.service.GetUserByID(uint(id))
+	user, err := h.service.GetUserByID(c.Request.Context(), id)
 	if err != nil {
-		h.logger.Error("Failed to get user", zap.Error(err))
-		ctx.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"data": user})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "OK", Data: user})
 }
 
 // GetUsers godoc
 // @Summary Get all users
-// @Description Get a list of users with optional filtering and pagination
 // @Tags users
-// @Accept json
 // @Produce json
 // @Param name query string false "Filter by name"
 // @Param email query string false "Filter by email"
 // @Param page query int false "Page number" default(1)
 // @Param page_size query int false "Number of items per page" default(10)
-// @Success 200 {object} dto.UserListResponse "List of users"
-// @Failure 400 {object} map[string]interface{} "Invalid query parameters"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "List of users"
 // @Router /users [get]
-func (h *UserHandler) GetUsers(ctx *gin.Context) {
+func (h *UserHandler) GetUsers(c *gin.Context) {
 	var filter dto.UserFilter
-	if err := ctx.ShouldBindQuery(&filter); err != nil {
-		h.logger.Error("Invalid query parameters", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.BindQuery(c, &filter); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid query parameters").WithCause(err))
 		return
 	}
 
-	users, err := h.service.GetUsers(&filter)
+	users, err := h.service.GetUsers(c.Request.Context(), &filter)
 	if err != nil {
-		h.logger.Error("Failed to get users", zap.Error(err))
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get users"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, users)
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "OK", Data: users})
 }
 
 // UpdateUser godoc
 // @Summary Update a user
-// @Description Update a user's information by ID
 // @Tags users
 // @Accept json
 // @Produce json
 // @Param id path int true "User ID"
 // @Param user body dto.UpdateUserRequest true "User update request"
-// @Success 200 {object} map[string]interface{} "Updated user"
-// @Failure 400 {object} map[string]interface{} "Invalid request"
-// @Failure 404 {object} map[string]interface{} "User not found"
-// @Failure 409 {object} map[string]interface{} "Email already exists"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "Updated user"
+// @Failure 404 {object} types.ResponseAPI "User not found"
+// @Failure 409 {object} types.ResponseAPI "Email already exists"
 // @Router /users/{id} [put]
-func (h *UserHandler) UpdateUser(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+func (h *UserHandler) UpdateUser(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
 		return
 	}
 
 	var req dto.UpdateUserRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		h.logger.Error("Invalid request body", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.Bind(c, &req); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid request body").WithCause(err))
+		return
+	}
+	if err := response.Validate(c, &req); err != nil {
 		return
 	}
 
-	user, err := h.service.UpdateUser(uint(id), &req)
+	user, err := h.service.UpdateUser(c.Request.Context(), id, &req)
 	if err != nil {
-		h.logger.Error("Failed to update user", zap.Error(err))
-		if err.Error() == "user not found" {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		if err.Error() == "email already exists" {
-			ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"data": user})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "User updated.", Data: user})
 }
 
 // UpdateUserPassword godoc
 // @Summary Update user password
-// @Description Update a user's password by ID
 // @Tags users
 // @Accept json
 // @Produce json
 // @Param id path int true "User ID"
 // @Param password body dto.UpdateUserPasswordRequest true "Password update request"
-// @Success 200 {object} map[string]interface{} "Password updated successfully"
-// @Failure 400 {object} map[string]interface{} "Invalid request"
-// @Failure 401 {object} map[string]interface{} "Current password is incorrect"
-// @Failure 404 {object} map[string]interface{} "User not found"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "Password updated"
+// @Failure 401 {object} types.ResponseAPI "Current password is incorrect"
+// @Failure 404 {object} types.ResponseAPI "User not found"
 // @Router /users/{id}/password [put]
-func (h *UserHandler) UpdateUserPassword(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+func (h *UserHandler) UpdateUserPassword(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
 		return
 	}
 
 	var req dto.UpdateUserPasswordRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		h.logger.Error("Invalid request body", zap.Error(err))
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := reqbind.Bind(c, &req); err != nil {
+		response.Render(c, response.NewBadRequestException("Invalid request body").WithCause(err))
+		return
+	}
+	if err := response.Validate(c, &req); err != nil {
 		return
 	}
 
-	err = h.service.UpdateUserPassword(uint(id), &req)
-	if err != nil {
-		h.logger.Error("Failed to update user password", zap.Error(err))
-		if err.Error() == "user not found" {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		if err.Error() == "current password is incorrect" {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+	if err := h.service.UpdateUserPassword(c.Request.Context(), id, &req); err != nil {
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "Password updated.", Data: nil})
 }
 
 // DeleteUser godoc
 // @Summary Delete a user
-// @Description Delete a user by ID
 // @Tags users
-// @Accept json
 // @Produce json
 // @Param id path int true "User ID"
-// @Success 200 {object} map[string]interface{} "User deleted successfully"
-// @Failure 400 {object} map[string]interface{} "Invalid user ID"
-// @Failure 404 {object} map[string]interface{} "User not found"
-// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Success 200 {object} types.ResponseAPI "User deleted"
+// @Failure 404 {object} types.ResponseAPI "User not found"
 // @Router /users/{id} [delete]
-func (h *UserHandler) DeleteUser(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+func (h *UserHandler) DeleteUser(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
 		return
 	}
 
-	err = h.service.DeleteUser(uint(id))
-	if err != nil {
-		h.logger.Error("Failed to delete user", zap.Error(err))
-		if err.Error() == "user not found" {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+	if err := h.service.DeleteUser(c.Request.Context(), id); err != nil {
+		response.Render(c, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+	response.Send(c, &types.Response{HTTPStatus: http.StatusOK, Code: enum.CodeOK, Message: "User deleted.", Data: nil})
 }
 
 func (h *UserHandler) RegisterRoutes(api *gin.RouterGroup) {

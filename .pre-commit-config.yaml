@@ -6,18 +6,16 @@ repos:
         name: golangci-lint
         entry: golangci-lint
         language: system
-        args: [run, --fix]
+        args: [run, --fix, --new-from-rev=HEAD]
         files: \.go$
         pass_filenames: false
-        
+
       - id: go-test
-        name: Run tests
-        entry: go
+        name: Run tests (changed packages)
+        entry: bash -c 'go test -race $(printf "%s\n" "$@" | xargs -n1 dirname | sort -u | sed "s|^|./|")' --
         language: system
-        args: [test, -v, ./...]
         files: \.go$
-        pass_filenames: false
-        
+
       - id: go-mod-tidy
         name: Go mod tidy
         entry: go
@@ -32,7 +30,7 @@ repos:
       - id: trailing-whitespace
         exclude: \.pb\.go$
       - id: end-of-file-fixer
-        exclude: \.pb\.go$
+        exclude: (\.pb\.go$|^internal/server/api/docs/swagger\.json$)
       - id: check-yaml
       - id: check-added-large-files
       - id: check-merge-conflict

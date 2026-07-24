@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package vibe.payment.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "vibe-ddd-golang/internal/server/grpc/proto/payment;paymentv1";
+
+// PaymentService is the gRPC surface of the payment domain. It calls the same
+// domain service layer as the HTTP handlers.
+service PaymentService {
+  rpc CreatePayment(CreatePaymentRequest) returns (CreatePaymentResponse);
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
+  rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
+  rpc UpdatePayment(UpdatePaymentRequest) returns (UpdatePaymentResponse);
+  rpc DeletePayment(DeletePaymentRequest) returns (DeletePaymentResponse);
+  rpc GetUserPayments(GetUserPaymentsRequest) returns (GetUserPaymentsResponse);
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_PENDING = 1;
+  PAYMENT_STATUS_COMPLETED = 2;
+  PAYMENT_STATUS_FAILED = 3;
+  PAYMENT_STATUS_CANCELED = 4;
+}
+
+message Payment {
+  uint32 id = 1;
+  double amount = 2;
+  string currency = 3;
+  string description = 4;
+  PaymentStatus status = 5;
+  uint32 user_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message CreatePaymentRequest {
+  double amount = 1;
+  string currency = 2;
+  string description = 3;
+  uint32 user_id = 4;
+}
+message CreatePaymentResponse { Payment payment = 1; }
+
+message GetPaymentRequest { uint32 id = 1; }
+message GetPaymentResponse { Payment payment = 1; }
+
+message ListPaymentsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  PaymentStatus status = 3;
+  string currency = 4;
+  uint32 user_id = 5;
+}
+message ListPaymentsResponse {
+  repeated Payment payments = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message UpdatePaymentRequest {
+  uint32 id = 1;
+  PaymentStatus status = 2;
+  string description = 3;
+}
+message UpdatePaymentResponse { Payment payment = 1; }
+
+message DeletePaymentRequest { uint32 id = 1; }
+message DeletePaymentResponse { bool success = 1; }
+
+message GetUserPaymentsRequest { uint32 user_id = 1; }
+message GetUserPaymentsResponse { repeated Payment payments = 1; }

@@ -2,23 +2,20 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"os/signal"
 	"syscall"
 
+	"vibe-ddd-golang/infrastructure"
 	"vibe-ddd-golang/internal/config"
-	"vibe-ddd-golang/internal/pkg/database"
-	"vibe-ddd-golang/internal/pkg/logger"
-	"vibe-ddd-golang/internal/server/api"
+	serverapi "vibe-ddd-golang/internal/server/api"
+	grpcserver "vibe-ddd-golang/internal/server/grpc"
 
 	"go.uber.org/fx"
 )
 
 // @title           Vibe DDD Golang API
 // @version         1.0
-// @description     A production-ready Go boilerplate following Domain-Driven Design (DDD) principles with NestJS-like architecture patterns.
-// @description     Built with modern Go practices, microservice architecture, and comprehensive background job processing.
+// @description     A production-ready Go boilerplate following Domain-Driven Design (DDD) principles.
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   API Support
@@ -31,42 +28,34 @@ import (
 // @host      localhost:8080
 // @BasePath  /api/v1
 
-// @securityDefinitions.basic  BasicAuth
-
-// @externalDocs.description  OpenAPI
-// @externalDocs.url          https://swagger.io/resources/open-api/
-
 func main() {
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	app := fx.New(
+		// app_context is a signal-aware context injected into params.Params.
+		fx.Provide(fx.Annotate(
+			func() context.Context { return rootCtx },
+			fx.ResultTags(`name:"app_context"`),
+		)),
 		fx.Provide(
 			config.NewConfig,
-			logger.NewLogger,
-			database.NewDatabase,
+			infrastructure.NewGinEngine,
+			infrastructure.NewLogger,
+			infrastructure.NewDatabases,
+			infrastructure.NewRedis,
+			infrastructure.RedisInterface,
+			infrastructure.NewRabbitMQ,
 		),
-		api.Module,
+		// Process init runs before the graph is built.
+		fx.Invoke(infrastructure.InitializeLogger),
+		fx.Invoke(infrastructure.InitializeValidation),
+		serverapi.Module,
+		grpcserver.Module,
 		fx.Invoke(Run),
 		fx.StartTimeout(config.DefaultStartTimeout),
 		fx.StopTimeout(config.DefaultStopTimeout),
 	)
 
-	ctx := context.Background()
-	if err := app.Start(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start application: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Setup graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Wait for shutdown signal
-	<-sigChan
-	fmt.Println("\nReceived shutdown signal, stopping application gracefully...")
-
-	if err := app.Stop(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to stop application gracefully: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Println("Application stopped successfully")
+	app.Run()
 }

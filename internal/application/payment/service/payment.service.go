@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -8,18 +9,19 @@ import (
 	"vibe-ddd-golang/internal/application/payment/entity"
 	"vibe-ddd-golang/internal/application/payment/repository"
 	"vibe-ddd-golang/internal/application/user/service"
+	"vibe-ddd-golang/internal/pkg/response"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type PaymentService interface {
-	CreatePayment(req *dto.CreatePaymentRequest) (*dto.PaymentResponse, error)
-	GetPaymentByID(id uint) (*dto.PaymentResponse, error)
-	GetPayments(filter *dto.PaymentFilter) (*dto.PaymentListResponse, error)
-	UpdatePayment(id uint, req *dto.UpdatePaymentRequest) (*dto.PaymentResponse, error)
-	DeletePayment(id uint) error
-	GetPaymentsByUser(userID uint) ([]dto.PaymentResponse, error)
+	CreatePayment(ctx context.Context, req *dto.CreatePaymentRequest) (*dto.PaymentResponse, error)
+	GetPaymentByID(ctx context.Context, id uint) (*dto.PaymentResponse, error)
+	GetPayments(ctx context.Context, filter *dto.PaymentFilter) (*dto.PaymentListResponse, error)
+	UpdatePayment(ctx context.Context, id uint, req *dto.UpdatePaymentRequest) (*dto.PaymentResponse, error)
+	DeletePayment(ctx context.Context, id uint) error
+	GetPaymentsByUser(ctx context.Context, userID uint) ([]dto.PaymentResponse, error)
 }
 
 type paymentService struct {
@@ -40,12 +42,10 @@ func NewPaymentService(
 	}
 }
 
-func (s *paymentService) CreatePayment(req *dto.CreatePaymentRequest) (*dto.PaymentResponse, error) {
-	// Validate that user exists before creating payment
-	_, err := s.userService.GetUserByID(req.UserID)
-	if err != nil {
-		s.logger.Error("User not found for payment creation", zap.Uint("user_id", req.UserID), zap.Error(err))
-		return nil, errors.New("user not found")
+func (s *paymentService) CreatePayment(ctx context.Context, req *dto.CreatePaymentRequest) (*dto.PaymentResponse, error) {
+	// Validate that the user exists before creating a payment (cross-domain).
+	if _, err := s.userService.GetUserByID(ctx, req.UserID); err != nil {
+		return nil, response.NewBadRequestException("user not found")
 	}
 
 	payment := &entity.Payment{
@@ -58,28 +58,26 @@ func (s *paymentService) CreatePayment(req *dto.CreatePaymentRequest) (*dto.Paym
 		UpdatedAt:   time.Now(),
 	}
 
-	err = s.repo.Create(payment)
-	if err != nil {
-		s.logger.Error("Failed to create payment", zap.Error(err))
-		return nil, err
+	if err := s.repo.Create(ctx, payment); err != nil {
+		return nil, response.NewInternalServerException("failed to create payment").WithCause(err)
 	}
 
 	return s.entityToResponse(payment), nil
 }
 
-func (s *paymentService) GetPaymentByID(id uint) (*dto.PaymentResponse, error) {
-	payment, err := s.repo.GetByID(id)
+func (s *paymentService) GetPaymentByID(ctx context.Context, id uint) (*dto.PaymentResponse, error) {
+	payment, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("payment not found")
+			return nil, response.NewNotFoundException("payment not found")
 		}
-		return nil, err
+		return nil, response.NewInternalServerException("failed to get payment").WithCause(err)
 	}
 
 	return s.entityToResponse(payment), nil
 }
 
-func (s *paymentService) GetPayments(filter *dto.PaymentFilter) (*dto.PaymentListResponse, error) {
+func (s *paymentService) GetPayments(ctx context.Context, filter *dto.PaymentFilter) (*dto.PaymentListResponse, error) {
 	if filter.Page <= 0 {
 		filter.Page = 1
 	}
@@ -87,14 +85,14 @@ func (s *paymentService) GetPayments(filter *dto.PaymentFilter) (*dto.PaymentLis
 		filter.PageSize = 10
 	}
 
-	payments, totalCount, err := s.repo.GetAll(filter)
+	payments, totalCount, err := s.repo.GetAll(ctx, filter)
 	if err != nil {
-		return nil, err
+		return nil, response.NewInternalServerException("failed to list payments").WithCause(err)
 	}
 
 	responses := make([]dto.PaymentResponse, 0, len(payments))
-	for _, payment := range payments {
-		responses = append(responses, *s.entityToResponse(&payment))
+	for i := range payments {
+		responses = append(responses, *s.entityToResponse(&payments[i]))
 	}
 
 	return &dto.PaymentListResponse{
@@ -105,18 +103,18 @@ func (s *paymentService) GetPayments(filter *dto.PaymentFilter) (*dto.PaymentLis
 	}, nil
 }
 
-func (s *paymentService) UpdatePayment(id uint, req *dto.UpdatePaymentRequest) (*dto.PaymentResponse, error) {
-	payment, err := s.repo.GetByID(id)
+func (s *paymentService) UpdatePayment(ctx context.Context, id uint, req *dto.UpdatePaymentRequest) (*dto.PaymentResponse, error) {
+	payment, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("payment not found")
+			return nil, response.NewNotFoundException("payment not found")
 		}
-		return nil, err
+		return nil, response.NewInternalServerException("failed to get payment").WithCause(err)
 	}
 
 	status := entity.PaymentStatus(req.Status)
 	if !status.IsValid() {
-		return nil, errors.New("invalid payment status")
+		return nil, response.NewBadRequestException("invalid payment status")
 	}
 
 	payment.Status = status
@@ -125,36 +123,36 @@ func (s *paymentService) UpdatePayment(id uint, req *dto.UpdatePaymentRequest) (
 	}
 	payment.UpdatedAt = time.Now()
 
-	err = s.repo.Update(payment)
-	if err != nil {
-		s.logger.Error("Failed to update payment", zap.Error(err))
-		return nil, err
+	if err := s.repo.Update(ctx, payment); err != nil {
+		return nil, response.NewInternalServerException("failed to update payment").WithCause(err)
 	}
 
 	return s.entityToResponse(payment), nil
 }
 
-func (s *paymentService) DeletePayment(id uint) error {
-	_, err := s.repo.GetByID(id)
-	if err != nil {
+func (s *paymentService) DeletePayment(ctx context.Context, id uint) error {
+	if _, err := s.repo.GetByID(ctx, id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("payment not found")
+			return response.NewNotFoundException("payment not found")
 		}
-		return err
+		return response.NewInternalServerException("failed to get payment").WithCause(err)
 	}
 
-	return s.repo.Delete(id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return response.NewInternalServerException("failed to delete payment").WithCause(err)
+	}
+	return nil
 }
 
-func (s *paymentService) GetPaymentsByUser(userID uint) ([]dto.PaymentResponse, error) {
-	payments, err := s.repo.GetByUserID(userID)
+func (s *paymentService) GetPaymentsByUser(ctx context.Context, userID uint) ([]dto.PaymentResponse, error) {
+	payments, err := s.repo.GetByUserID(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, response.NewInternalServerException("failed to get payments").WithCause(err)
 	}
 
 	responses := make([]dto.PaymentResponse, 0, len(payments))
-	for _, payment := range payments {
-		responses = append(responses, *s.entityToResponse(&payment))
+	for i := range payments {
+		responses = append(responses, *s.entityToResponse(&payments[i]))
 	}
 
 	return responses, nil
