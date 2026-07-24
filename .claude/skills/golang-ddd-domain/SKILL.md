@@ -87,5 +87,5 @@ Create `internal/application/<domain>/` with:
 ```bash
 make build && make test && make lint
 make swagger-gen        # if routes were added/changed
-make migrate-diff NAME=add_<domain> DEV_DSN='postgres://...'   # if an entity was added
+make migrate-diff NAME=add_<domain>   # if an entity was added; DEV_DSN is optional
 ```
