@@ -1,0 +1,36 @@
+# Pre-commit hooks configuration
+repos:
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint
+        language: system
+        args: [run, --fix, --new-from-rev=HEAD]
+        files: \.go$
+        pass_filenames: false
+
+      - id: go-test
+        name: Run tests (changed packages)
+        entry: bash -c 'go test -race $(printf "%s\n" "$@" | xargs -n1 dirname | sort -u | sed "s|^|./|")' --
+        language: system
+        files: \.go$
+
+      - id: go-mod-tidy
+        name: Go mod tidy
+        entry: go
+        language: system
+        args: [mod, tidy]
+        files: go\.(mod|sum)$
+        pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.pb\.go$
+      - id: end-of-file-fixer
+        exclude: (\.pb\.go$|^internal/server/api/docs/swagger\.json$)
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict

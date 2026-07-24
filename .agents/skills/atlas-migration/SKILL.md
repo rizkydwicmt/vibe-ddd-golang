@@ -1,0 +1,1 @@
+../../../.claude/skills/atlas-migration/SKILL.md

@@ -1,0 +1,494 @@
+basePath: /api/v1
+definitions:
+  dto.CreatePaymentRequest:
+    properties:
+      amount:
+        type: number
+      currency:
+        type: string
+      description:
+        type: string
+      user_id:
+        type: integer
+    required:
+    - amount
+    - currency
+    - description
+    - user_id
+    type: object
+  dto.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  dto.UpdatePaymentRequest:
+    properties:
+      description:
+        type: string
+      status:
+        enum:
+        - pending
+        - completed
+        - failed
+        - canceled
+        type: string
+    required:
+    - status
+    type: object
+  dto.UpdateUserPasswordRequest:
+    properties:
+      current_password:
+        type: string
+      new_password:
+        minLength: 8
+        type: string
+    required:
+    - current_password
+    - new_password
+    type: object
+  dto.UpdateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+    required:
+    - email
+    - name
+    type: object
+  enum.ResultCode:
+    enum:
+    - OK
+    - CREATED
+    - ACCEPTED
+    - INVALID_PAYLOAD
+    - UNSUPPORTED_API_VERSION
+    - BAD_REQUEST
+    - UNAUTHORIZED
+    - FORBIDDEN
+    - NOT_FOUND
+    - CONFLICT
+    - IDEMPOTENCY_CONFLICT
+    - RATE_LIMITED
+    - UNPROCESSABLE_ENTITY
+    - PROVIDER_UNAVAILABLE
+    - SERVICE_UNAVAILABLE
+    - TIMEOUT
+    - INTERNAL_ERROR
+    type: string
+    x-enum-varnames:
+    - CodeOK
+    - CodeCreated
+    - CodeAccepted
+    - CodeInvalidPayload
+    - CodeUnsupportedAPIVersion
+    - CodeBadRequest
+    - CodeUnauthorized
+    - CodeForbidden
+    - CodeNotFound
+    - CodeConflict
+    - CodeIdempotencyConflict
+    - CodeRateLimited
+    - CodeUnprocessableEntity
+    - CodeProviderUnavailable
+    - CodeServiceUnavailable
+    - CodeTimeout
+    - CodeInternalError
+  types.ResponseAPI:
+    properties:
+      code:
+        $ref: '#/definitions/enum.ResultCode'
+      data: {}
+      debug:
+        $ref: '#/definitions/types.ResponseAPIDebug'
+      message:
+        type: string
+      requestId:
+        type: string
+    type: object
+  types.ResponseAPIDebug:
+    properties:
+      endTime:
+        type: string
+      error:
+        type: string
+      runtimeMs:
+        type: integer
+      startTime:
+        type: string
+      version:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: A production-ready Go boilerplate following Domain-Driven Design (DDD)
+    principles.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Vibe DDD Golang API
+  version: "1.0"
+paths:
+  /healthz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Liveness probe
+      tags:
+      - health
+  /payments:
+    get:
+      parameters:
+      - description: Filter by status
+        enum:
+        - pending
+        - completed
+        - failed
+        - canceled
+        in: query
+        name: status
+        type: string
+      - description: Filter by currency (3-letter code)
+        in: query
+        name: currency
+        type: string
+      - description: Filter by user ID
+        in: query
+        name: user_id
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of payments
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Get all payments
+      tags:
+      - payments
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Payment creation request
+        in: body
+        name: payment
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreatePaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created payment
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Create a new payment
+      tags:
+      - payments
+  /payments/{id}:
+    delete:
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Payment deleted
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: Payment not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Delete a payment
+      tags:
+      - payments
+    get:
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Payment details
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: Payment not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Get a payment by ID
+      tags:
+      - payments
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Payment update request
+        in: body
+        name: payment
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdatePaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated payment
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: Payment not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Update a payment
+      tags:
+      - payments
+  /readyz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Readiness probe
+      tags:
+      - health
+  /users:
+    get:
+      parameters:
+      - description: Filter by name
+        in: query
+        name: name
+        type: string
+      - description: Filter by email
+        in: query
+        name: email
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of users
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Get all users
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Create a new user with the provided information
+      parameters:
+      - description: User creation request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created user
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "409":
+          description: Email already exists
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Create a new user
+      tags:
+      - users
+  /users/{id}:
+    delete:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User deleted
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Delete a user
+      tags:
+      - users
+    get:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User details
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Get a user by ID
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User update request
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated user
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "409":
+          description: Email already exists
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Update a user
+      tags:
+      - users
+  /users/{id}/password:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Password update request
+        in: body
+        name: password
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password updated
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "401":
+          description: Current password is incorrect
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+        "404":
+          description: User not found
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Update user password
+      tags:
+      - users
+  /users/{id}/payments:
+    get:
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of payments for the user
+          schema:
+            $ref: '#/definitions/types.ResponseAPI'
+      summary: Get payments by user ID
+      tags:
+      - payments
+swagger: "2.0"

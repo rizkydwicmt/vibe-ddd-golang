@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package vibe.user.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "vibe-ddd-golang/internal/server/grpc/proto/user;userv1";
+
+// UserService is the gRPC surface of the user domain. It calls the same domain
+// service layer as the HTTP handlers.
+service UserService {
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc UpdateUserPassword(UpdateUserPasswordRequest) returns (UpdateUserPasswordResponse);
+}
+
+message User {
+  uint32 id = 1;
+  string name = 2;
+  string email = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+message CreateUserResponse { User user = 1; }
+
+message GetUserRequest { uint32 id = 1; }
+message GetUserResponse { User user = 1; }
+
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string name = 3;
+  string email = 4;
+}
+message ListUsersResponse {
+  repeated User users = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message UpdateUserRequest {
+  uint32 id = 1;
+  string name = 2;
+  string email = 3;
+}
+message UpdateUserResponse { User user = 1; }
+
+message DeleteUserRequest { uint32 id = 1; }
+message DeleteUserResponse { bool success = 1; }
+
+message UpdateUserPasswordRequest {
+  uint32 id = 1;
+  string current_password = 2;
+  string new_password = 3;
+}
+message UpdateUserPasswordResponse { bool success = 1; }

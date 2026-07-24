@@ -1,0 +1,54 @@
+# Copy to config.yaml. Required deployment values are explicit; optional knobs use
+# defaults from internal/config/config.go. Redis and RabbitMQ are optional: leave
+# their host/uri empty to boot the API on Postgres alone.
+
+app:
+  name: vibe-ddd-golang
+  environment: development   # development | staging | production
+  timezone: UTC
+
+api:
+  host: localhost
+  port: 8080
+  grpc_port: 9090
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
+
+database:
+  driver: postgres             # postgres | mysql
+  host: localhost
+  port: 5432
+  user: postgres
+  password: postgres
+  db_name: vibe_db
+  ssl_mode: disable
+  timezone: UTC
+  max_open_conns: 20
+  max_idle_conns: 5
+  conn_max_lifetime: 1h
+  conn_max_idle_time: 30m
+  sync: true               # dev only: GORM auto-migrate on boot. Prod uses cmd/migration.
+  cache: false             # GORM query cache plugin (memory-backed)
+  cache_time: 5m
+
+redis:
+  host: ""                 # set to enable redis (cache/session); empty = disabled
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "vibe:"
+  pool_size: 10
+
+rabbitmq:
+  uri: ""                  # set amqp://... to enable eventing; empty = disabled
+  event_exchange: vibe.events
+
+migration:
+  migrations_dir: migrations
+  debug: false
+
+logger:
+  level: info
+  format: json
+  output_path: stdout
