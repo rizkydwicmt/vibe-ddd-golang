@@ -8,6 +8,7 @@ import (
 	"time"
 
 	migrationconfig "vibe-ddd-golang/cmd/migration/config"
+	"vibe-ddd-golang/internal/common/enum"
 	database "vibe-ddd-golang/internal/pkg/db"
 	"vibe-ddd-golang/internal/pkg/logger"
 	"vibe-ddd-golang/internal/pkg/migration"
@@ -27,7 +28,7 @@ var (
 	applyCountFlag = flag.Int("count", 0, "Number of migrations to apply (0 means all)")
 	rollbackFlag   = flag.Bool("rollback", false, "Rollback the last applied migration")
 	versionFlag    = flag.String("version", "", "Specific version to rollback to")
-	devFlag        = flag.String("dev", "", "Database connection string")
+	devFlag        = flag.String("dev", "", "Optional database connection string override")
 	statusFlag     = flag.Bool("status", false, "Show migration status")
 	helpFlag       = flag.Bool("help", false, "Show this help message")
 )
@@ -78,6 +79,12 @@ func main() {
 		log.Fatal(err)
 		return
 	}
+	if *diffFlag && *devFlag == "" &&
+		(migrationConfig.DbConfig.Environment == enum.STAGING ||
+			migrationConfig.DbConfig.Environment == enum.PRODUCTION) {
+		log.Fatal("--dev is required for diff operations in staging or production environments")
+		return
+	}
 
 	db, err := database.Setup(migrationConfig.DbConfig)
 	if err != nil {
@@ -103,7 +110,7 @@ func main() {
 		return
 	}
 
-	if *applyFlag || *rollbackFlag || *initFlag || *diffFlag || *statusFlag || *baselineFlag {
+	if *applyFlag || *rollbackFlag || *initFlag || *statusFlag || *baselineFlag {
 		if err := migrationService.EnsureSchemaRevisionsTable(); err != nil {
 			log.Fatalf("Error ensuring schema_migrations table exists: %v", err)
 		}
@@ -156,9 +163,6 @@ func main() {
 			log.Fatalf("Error generating initial migration files: %v", err)
 		}
 	} else if *diffFlag {
-		if *devFlag == "" {
-			log.Fatal("Database connection string is required for diff operations. Use the --dev flag.")
-		}
 		migrationPlan, err = migrationService.GenerateMigrationDiff(ctx, *nameFlag, *dryRunFlag)
 		if err != nil {
 			log.Fatalf("Error generating migration diff: %v", err)

@@ -44,6 +44,7 @@ rabbitmq:
   uri: ""                  # set amqp://... to enable eventing; empty = disabled
   event_exchange: vibe.events
 
+# migrate-diff uses database.* by default; DEV_DSN may override the connection.
 migration:
   migrations_dir: migrations
   debug: false

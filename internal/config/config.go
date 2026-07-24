@@ -131,8 +131,13 @@ func NewConfig() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
 	v.AddConfigPath("./config")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
 
 	setDefaultsFromTags(v, reflect.TypeOf(Config{}), "")
+	if err := bindEnvFields(v, reflect.TypeOf(Config{}), ""); err != nil {
+		return nil, err
+	}
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -149,6 +154,33 @@ func NewConfig() (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func bindEnvFields(v *viper.Viper, t reflect.Type, prefix string) error {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		path := field.Tag.Get("mapstructure")
+		if path == "" {
+			path = strings.ToLower(field.Name)
+		}
+		if prefix != "" {
+			path = prefix + "." + path
+		}
+
+		fieldType := field.Type
+		if fieldType.Kind() == reflect.Struct && fieldType != reflect.TypeOf(time.Duration(0)) {
+			if err := bindEnvFields(v, fieldType, path); err != nil {
+				return err
+			}
+			continue
+		}
+
+		envName := strings.ToUpper(strings.ReplaceAll(path, ".", "_"))
+		if err := v.BindEnv(path, envName); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func normalizeFromTags(v reflect.Value) {

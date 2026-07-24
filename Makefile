@@ -47,9 +47,9 @@ migrate-rollback:
 migrate-init:
 	$(GOCMD) run ./cmd/migration -init -name=$(NAME)
 
-# Diff entities against a dev DSN: make migrate-diff NAME=add_x DEV_DSN='postgres://...'
+# Diff entities against configured DB; DEV_DSN optionally overrides the connection.
 migrate-diff:
-	$(GOCMD) run ./cmd/migration -diff -name=$(NAME) -dev='$(DEV_DSN)'
+	$(GOCMD) run ./cmd/migration -diff -name=$(NAME) $(if $(DEV_DSN),-dev='$(DEV_DSN)',)
 
 # Swagger/OpenAPI
 swagger-gen:
@@ -184,7 +184,7 @@ ci:
 help:
 	@echo "Build:      build build-migration build-all"
 	@echo "Run:        run"
-	@echo "Migrate:    migrate-status migrate-apply migrate-rollback migrate-init(NAME=) migrate-diff(NAME= DEV_DSN=)"
+	@echo "Migrate:    migrate-status migrate-apply migrate-rollback migrate-init(NAME=) migrate-diff(NAME= [DEV_DSN=])"
 	@echo "Test:       test test-coverage test-unit test-integration test-repo test-service test-handler test-user test-payment test-verbose"
 	@echo "Lint:       lint lint-fix lint-verbose lint-new lint-linter(LINTER=)"
 	@echo "Format:     format format-strict"

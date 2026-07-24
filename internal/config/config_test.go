@@ -73,6 +73,30 @@ database:
 	}
 }
 
+func TestNewConfigReadsEnvironmentWithoutConfigFile(t *testing.T) {
+	withTempConfigDir(t)
+	t.Setenv("APP_NAME", "env-service")
+	t.Setenv("DATABASE_DRIVER", "postgres")
+	t.Setenv("DATABASE_HOST", "db.internal")
+	t.Setenv("DATABASE_PORT", "5544")
+	t.Setenv("DATABASE_USER", "env-user")
+	t.Setenv("DATABASE_DB_NAME", "env-db")
+
+	cfg, err := NewConfig()
+	if err != nil {
+		t.Fatalf("NewConfig() error = %v", err)
+	}
+	if cfg.App.Name != "env-service" {
+		t.Fatalf("expected APP_NAME override, got %q", cfg.App.Name)
+	}
+	if cfg.Database.Host != "db.internal" || cfg.Database.Port != 5544 {
+		t.Fatalf("expected DATABASE_HOST/PORT overrides, got %s:%d", cfg.Database.Host, cfg.Database.Port)
+	}
+	if cfg.Database.User != "env-user" || cfg.Database.DBName != "env-db" {
+		t.Fatalf("expected DATABASE_USER/DB_NAME overrides, got %s/%s", cfg.Database.User, cfg.Database.DBName)
+	}
+}
+
 func TestNewConfigNormalizesTaggedFields(t *testing.T) {
 	dir := withTempConfigDir(t)
 	content := `app:

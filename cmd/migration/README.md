@@ -1,156 +1,77 @@
 # Database Migration Tool
 
-This is a comprehensive database migration tool that allows you to manage schema changes in a controlled and versioned manner. It supports generating, applying, and rolling back migrations, as well as displaying the current migration status.
+The migration CLI generates, reviews, applies, and rolls back versioned Atlas migrations for
+the entities registered in `internal/server/migration/migration.server.go`.
 
-## Project Structure
+## Diff Model
 
-```
-├── cmd
-│   └── migration
-│       ├── main.go                  # Main entry point for the CLI
-│       ├── .env                     # Environment variables for local development
-│       └── config                   # Default Configuration
-├── internal
-│   ├── pkg
-│   │   ├── migration                # Migration package for handling migration logic
-│   │   │   └── config.go            # Configuration handling
-│   │   │   └── show.go              # Show help message display
-│   │   │   └── helper.go            # helper functions for migration
-│   │   │   └── validator.go         # Command-line flag validation
-│   │   │   └── service.go           # Migration service implementation
-│   │   │   └── loader.go            # Schema loading functionality
-│   │   ├── db
-│   │   │   └── db.go                # Database connection handling
-│   │   ├── helper
-│   │   │   └── godotenv.go          # Environment variable helpers
-│   │   ├── logger
-│   │   │   └── logger.go            # Logging setup
-│   └── server
-│       └── migration.go             # Server-side migration handlers
-├── migrations                       # Directory for migration files
-└── README.md
-```
+`DEV_DSN` is optional. `make migrate-diff` resolves the existing database in this order:
 
-## Features
+1. `DEV_DSN`, when explicitly supplied.
+2. `database.*` from `config.yaml`, with `DATABASE_*` environment overrides such as
+   `DATABASE_HOST` and `DATABASE_DB_NAME`.
 
-- Generate initial schema migrations from existing database
-- Generate incremental migration diffs between GORM models and database
-- Apply migrations with transaction support
-- Rollback migrations to previous state or specific version
-- Baseline existing databases for migration tracking
-- Dry-run functionality to preview changes
-- Force mode to handle errors during migration
-- Migration status display
+The supplied or configured database is the **existing schema**. To build the desired schema,
+the loader creates a temporary PostgreSQL schema or MySQL database, executes the registered
+GORM entity statements there, asks Atlas to compare both schemas, then drops the temporary
+namespace. A diff-only run does not create the `schema_migrations` table.
 
-## Usage
+The database user therefore needs permission to inspect the existing schema and create/drop the
+temporary namespace. Implicit config/env fallback is blocked for staging and production; pass an
+explicit `DEV_DSN` only after confirming the target is safe.
+
+## Commands
 
 ```bash
-# Generate migration from schema changes
-go run cmd/migration/main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db"
+# Generate a diff using database.* / DATABASE_*
+make migrate-diff NAME=add_payment_status
 
-# Generate and apply migration in one command
-go run cmd/migration/main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db" --apply
+# Override the database connection
+make migrate-diff NAME=add_payment_status DEV_DSN='postgres://user:pass@localhost:5432/app?sslmode=disable'
 
-# Apply all pending migrations
-go run cmd/migration/main.go --apply
+# Preview without writing migration files
+go run ./cmd/migration --diff --name=add_payment_status --dry-run
 
-# Apply specific number of migrations
-go run cmd/migration/main.go --apply --count=2
+# Generate the initial migration
+make migrate-init NAME=init_schema
 
-# Check migration status
-go run cmd/migration/main.go --status
-
-# Rollback last migration
-go run cmd/migration/main.go --rollback
-
-# Rollback to specific version
-go run cmd/migration/main.go --rollback --version=20240425123456
-
-# Preview changes without writing files
-go run cmd/migration/main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db" --dry-run
-
-# Create migration with custom name
-go run cmd/migration/main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db" --name=add_user_table
-
-# Apply migrations with force (handle existing tables)
-go run cmd/migration/main.go --apply --force
-
-# Generate initial migration (this args only for existing database reengineering with golang)
-go run cmd/migration/main.go --init
-
-# Mark existing migrations as baseline (this args only for existing database reengineering with golang)
-go run cmd/migration/main.go --baseline
-
-# Mark migrations as baseline up to a specific version
-go run cmd/migration/main.go --baseline --version=20240425123456
-
-# Mark migrations as baseline and apply new ones
-go run cmd/migration/main.go --baseline --apply
+# Apply, inspect, and roll back
+make migrate-apply
+make migrate-status
+make migrate-rollback
+make migrate-rollback VERSION=20260724120000
 ```
 
-## Environment Variables
+Each generated migration contains matching files:
 
-The tool uses the following environment variables:
+- `<version>_<description>.up.sql`
+- `<version>_<description>.down.sql`
 
-### General Environment Variables
-- `CONFIG_TYPE`: Configuration type (default: env) (example: secret, env)
-- `MIGRATIONS_DIR`: Migrations directory (default: migrations)
-- `DEBUG`: Enable debug logging (default: false)
+## Environment
 
-### Configuration By Environment
-- `DB_HOST`: Database host (example: 127.0.0.1)
-- `DB_PORT`: Database port (example: 3306)
-- `DB_USER`: Database user (example: user)
-- `DB_PASSWORD`: Database password (example: pass)
-- `DB_NAME`: Database name (example: db_staging)
+Every `config.yaml` path can be overridden by the equivalent uppercase environment variable:
 
-### Configuration By Secret
-- `PROJECT_ID`: Google Cloud project ID (example: project-name)
-- `PROJECT_NUMBER`: Google Cloud project number (example: 12345)
-- `APP_ENV`: Application environment (example: local, development, production)
-- `APP_NAME`: Application name (example: summary)
-- `APP_PORT`: Application port (example: 8002)
-- `APP_TYPE`: Application type (service, web, mobile)
-- `GOOGLE_APPLICATION_CREDENTIALS`: Path to Google Cloud credentials file
-- `GOOGLE_PRIVATE_KEY_ID`: Google service account private key ID
-- `GOOGLE_PRIVATE_KEY`: Google service account private key
-- `GOOGLE_CLIENT_EMAIL`: Google service account email
-- `GOOGLE_CLIENT_ID`: Google service account client ID
+| Config path | Environment variable |
+|---|---|
+| `app.name` | `APP_NAME` |
+| `app.environment` | `APP_ENVIRONMENT` |
+| `database.driver` | `DATABASE_DRIVER` |
+| `database.host` | `DATABASE_HOST` |
+| `database.port` | `DATABASE_PORT` |
+| `database.user` | `DATABASE_USER` |
+| `database.password` | `DATABASE_PASSWORD` |
+| `database.db_name` | `DATABASE_DB_NAME` |
+| `database.ssl_mode` | `DATABASE_SSL_MODE` |
+| `database.timezone` | `DATABASE_TIMEZONE` |
+| `migration.migrations_dir` | `MIGRATION_MIGRATIONS_DIR` |
+| `migration.debug` | `MIGRATION_DEBUG` |
 
-## Migration Files
+`DEV_DSN` is a Make variable used to populate the optional `--dev` CLI flag; never commit it.
 
-Each migration consists of two files:
-- `<version>_<description>.up.sql`: Contains statements to apply the migration
-- `<version>_<description>.down.sql`: Contains statements to revert the migration
+## Safety
 
-The version format is YYYYMMDDHHMMSS.
-
-## Schema Tracking
-
-All migrations are tracked in the `schema_migrations` table with the following structure:
-
-```sql
-CREATE TABLE schema_migrations (
-    version varchar(255) NOT NULL,
-    description varchar(255) NOT NULL,
-    applied bigint NOT NULL DEFAULT 0,
-    total bigint NOT NULL DEFAULT 0,
-    executed_at timestamp NOT NULL,
-    execution_time bigint NOT NULL,
-    PRIMARY KEY (version)
-) CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-```
-
-## Best Practices
-
-1. Always check the status before applying migrations
-2. Use dry-run to preview changes before applying them
-3. Keep migrations small and focused on specific changes
-4. Test migrations in development environments before applying to production
-5. Use baseline for existing databases that have not been tracked yet
-6. Regularly backup your database before running migrations
-
-## TODO
-
-- [ ] Implement support for multiple database types (PostgreSQL, SQLite, etc.)
-- [ ] Change CLI to Cobra for better command management
+- Run `--dry-run` and review every generated statement before applying it.
+- Treat drops, truncation, narrowing types, and irreversible rewrites as destructive.
+- Keep `database.sync` disabled in shared environments; committed migrations are authoritative.
+- Never run apply, rollback, baseline, or diff against remote infrastructure without explicit
+  approval and a confirmed recovery plan.

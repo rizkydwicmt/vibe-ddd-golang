@@ -29,11 +29,14 @@ func NewLoader(tableList []string, statements *string) *Loader {
 
 func (l *Loader) LoadGORMSchema(ctx context.Context, config *Config) (*schema.Realm, error) {
 	driverType := config.DbConfig.Driver
+	dbConfig := *config.DbConfig
+	dbConfig.Cache = false
+	dbConfig.MaxOpenConns = 1
+	dbConfig.MaxIdleConns = 1
+	dbConfig.ConnMaxLifetime = time.Minute
+	dbConfig.ConnMaxIdleTime = time.Minute
 
-	db, err := database.Setup(&database.Config{
-		URL:    config.DSN,
-		Driver: driverType,
-	})
+	db, err := database.Setup(&dbConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database for schema loading: %w", err)
 	}

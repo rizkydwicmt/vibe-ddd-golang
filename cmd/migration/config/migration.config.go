@@ -46,7 +46,6 @@ func NewConfigEnv(devDSN string, verbose bool) (*migration.Config, error) {
 
 	return &migration.Config{
 		MigrationsDir: conf.Migration.MigrationsDir,
-		DSN:           devDSN,
 		DbConfig:      dbConfig,
 		IsDebug:       conf.Migration.Debug || verbose,
 		Statements:    statements,

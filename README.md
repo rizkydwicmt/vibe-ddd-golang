@@ -156,13 +156,17 @@ same UPPER_SNAKE path (e.g. `DATABASE_HOST`, `API_PORT`). Notable knobs: `app.en
 
 ```bash
 make migrate-init NAME=init_schema                       # first migration from entities
-make migrate-diff NAME=add_col DEV_DSN='postgres://...'  # diff entities → new migration
+make migrate-diff NAME=add_col                           # uses database.* / DATABASE_*
+make migrate-diff NAME=add_col DEV_DSN='postgres://...'  # optional connection override
 make migrate-apply                                       # apply pending
 make migrate-status
 make migrate-rollback                                    # last (or VERSION=... to a target)
 ```
 
 Owned entities live in `internal/server/migration/migration.server.go`.
+For `migrate-diff`, the configured database is the existing schema. The tool creates a temporary
+PostgreSQL schema or MySQL database, materializes the GORM entities there, compares both schemas,
+then drops the temporary namespace. See [`cmd/migration/README.md`](cmd/migration/README.md).
 
 ## Testing
 

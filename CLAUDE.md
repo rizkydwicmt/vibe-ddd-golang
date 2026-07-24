@@ -36,7 +36,12 @@ Single test: `go test -race -run TestName ./internal/application/<domain>/...`
 | `make migrate-apply` | apply pending migrations |
 | `make migrate-rollback` (`VERSION=`) | roll back last (or to a version) |
 | `make migrate-init NAME=init_schema` | generate the initial migration |
-| `make migrate-diff NAME=add_x DEV_DSN='postgres://...'` | diff entities → new migration |
+| `make migrate-diff NAME=add_x` (`DEV_DSN=` optional) | diff entities → new migration |
+
+`migrate-diff` uses `database.*` / `DATABASE_*` as the existing schema when `DEV_DSN` is
+omitted. It builds the registered GORM entities in a temporary PostgreSQL schema or MySQL
+database, compares the two schemas, and removes the temporary namespace. Use `DEV_DSN` only
+to override the existing database connection; staging/production never use the implicit fallback.
 
 Entities owned by the service are listed in
 [`internal/server/migration/migration.server.go`](internal/server/migration/migration.server.go)

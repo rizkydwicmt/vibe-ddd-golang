@@ -6,7 +6,6 @@ import (
 
 type Config struct {
 	MigrationsDir string
-	DSN           string
 	DbConfig      *database.Config
 	Statements    *string
 	IsDebug       bool

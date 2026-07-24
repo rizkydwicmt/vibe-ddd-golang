@@ -25,7 +25,7 @@ AVAILABLE FLAGS:
     --name <string>     Custom name for the migration (default: auto-generated)
     --count <int>       Number of migrations to apply (default: all)
     --version <string>  Specific version to rollback to or baseline up to
-    --dev <string>      Database connection string for comparing with GORM models
+    --dev <string>      Optional database URL override for schema comparison
 
   UTILITY FLAGS:
     --dry-run           Preview changes without creating files
@@ -38,10 +38,10 @@ AVAILABLE FLAGS:
 EXAMPLES:
 
   1. Generate migration from schema changes:
-     go run main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db"
+     go run main.go --diff --name=add_user_table
 
-  2. Generate and apply migration in one command:
-     go run main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db" --apply
+  2. Override the configured database URL:
+     go run main.go --diff --dev="postgres://user:pass@localhost:5432/app?sslmode=disable"
 
   3. Apply all pending migrations:
      go run main.go --apply
@@ -59,10 +59,10 @@ EXAMPLES:
      go run main.go --rollback --version=20240425123456
 
   8. Preview changes without writing files:
-     go run main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db" --dry-run
+     go run main.go --diff --dry-run
 
   9. Create migration with custom name:
-      go run main.go --diff --dev="user:pass@tcp(127.0.0.1:3306)/db" --name=add_user_table
+      go run main.go --diff --name=add_user_table
 
   10. Apply migrations with force (handle existing tables):
       go run main.go --apply --force
@@ -81,30 +81,18 @@ EXAMPLES:
 
 ENVIRONMENT VARIABLES:
 
-  General Environment Variables
-  CONFIG_TYPE 			Configuration type (default: env) (example: secret, env)
-  MIGRATIONS_DIR 		Migrations directory (default: migrations)
-  DEBUG 				Enable debug logging (default: false)
-
-  Configuration By Environment:
-  DB_HOST              	Database host (default: 127.0.0.1)
-  DB_PORT              	Database port (default: 3306)
-  DB_USER              	Database user (default: user)
-  DB_PASSWORD          	Database password (default: password)
-  DB_NAME              	Database name (default: db_staging)
-
-  Configuration By Secret:
-  PROJECT_ID           	Google Cloud project ID (example: project-name)
-  PROJECT_NUMBER       	Google Cloud project number (example: 12345)
-  APP_ENV              	Application environment (example: local, development, production)
-  APP_NAME             	Application name (example: summary)
-  APP_PORT             	Application port (example: 8002)
-  APP_TYPE             	Application type (service, web, mobile)
-  GOOGLE_APPLICATION_CREDENTIALS  Path to Google Cloud credentials file
-  GOOGLE_PRIVATE_KEY_ID           Google service account private key ID
-  GOOGLE_PRIVATE_KEY              Google service account private key
-  GOOGLE_CLIENT_EMAIL             Google service account email
-  GOOGLE_CLIENT_ID                Google service account client ID
+  APP_NAME              Application name
+  APP_ENVIRONMENT       local, development, staging, or production
+  DATABASE_DRIVER       postgres or mysql
+  DATABASE_HOST         Existing database host
+  DATABASE_PORT         Existing database port
+  DATABASE_USER         Existing database user
+  DATABASE_PASSWORD     Existing database password
+  DATABASE_DB_NAME      Existing database name
+  DATABASE_SSL_MODE     PostgreSQL SSL mode
+  DATABASE_TIMEZONE     Database timezone
+  MIGRATION_MIGRATIONS_DIR  Migration file directory
+  MIGRATION_DEBUG       Enable migration debug logging
 
 NOTES:
   - Migrations are stored in the 'migrations' directory
@@ -112,7 +100,10 @@ NOTES:
   - Migration version format: YYYYMMDDHHMMSS
   - All migrations are versioned and tracked in the 'schema_migrations' table
   - Use --baseline when you have an existing database and want to start tracking migrations
-  - Use --dev to specify a connection string for comparing schema between database and GORM models
+  - --dev is optional; without it, database.* / DATABASE_* configuration is used
+  - Diff creates a temporary PostgreSQL schema or MySQL database for the GORM model,
+    compares it with the existing configured database, then drops the temporary namespace
+  - Staging and production diff operations require an explicit --dev URL
 
 For more information, visit the documentation.
 `)
